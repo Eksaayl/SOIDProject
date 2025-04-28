@@ -4,7 +4,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:test_project/landing.dart';  // for MyHomePage
+// for MyHomePage
+import 'package:test_project/startup.dart';
 import 'register.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -43,7 +44,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const Landing()),
+        MaterialPageRoute(builder: (_) => const StartupPage()),
       );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -105,7 +106,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const Landing()),
+        MaterialPageRoute(builder: (_) => const StartupPage()),
       );
     } on FirebaseAuthException catch (e) {
       debugPrint('❌ Google sign-in AuthException: ${e.code} ${e.message}');

@@ -1,14 +1,15 @@
-// lib/landing.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:test_project/state/selection_model.dart';
+import 'package:test_project/summary.dart';
 
 import 'login.dart';
 import 'manage_roles.dart';
 
 class Landing extends StatefulWidget {
-  const Landing({Key? key}) : super(key: key);
+  const Landing({super.key});
 
   @override
   State<Landing> createState() => _LandingState();
@@ -16,7 +17,7 @@ class Landing extends StatefulWidget {
 
 class _LandingState extends State<Landing> {
   static const double _sidebarWidth = 200.0;
-  static const double _breakpoint   = 800.0;
+  static const double _breakpoint = 800.0;
 
   bool _isAdmin = false;
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _userDocStream;
@@ -30,6 +31,7 @@ class _LandingState extends State<Landing> {
         .collection('users')
         .doc(uid)
         .snapshots();
+    // Listen for role changes
     _userDocStream.listen((snap) {
       if (!snap.exists) return;
       final role = (snap.data()!['role'] as String?)?.toLowerCase() ?? '';
@@ -39,18 +41,23 @@ class _LandingState extends State<Landing> {
 
   void _onItemTap(int idx, List<_NavItemData> mainItems, List<_NavItemData> bottomItems) async {
     final totalMain = mainItems.length;
-    // logout is last bottom
     if (idx == totalMain + bottomItems.length - 1) {
       await FirebaseAuth.instance.signOut();
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage()));
+      context.read<SelectionModel>().setAll({});
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
       return;
     }
 
+    // otherwise, just select the page
     setState(() => _selectedIndex = idx);
     if (MediaQuery.of(context).size.width < _breakpoint) {
       Navigator.of(context).pop();
     }
   }
+
 
   Widget _buildSidebar(bool isDrawer) {
     final mainItems = <_NavItemData>[
@@ -64,7 +71,7 @@ class _LandingState extends State<Landing> {
     ];
 
     final bottomItems = <_NavItemData>[
-      _NavItemData(Icons.settings, 'Settings', const Center(child: Text('Settings Page'))),
+      _NavItemData(Icons.settings, 'Settings', const SummaryPage()),
       _NavItemData(Icons.logout, 'Logout', null),
     ];
 
@@ -110,7 +117,7 @@ class _LandingState extends State<Landing> {
 
           const Divider(),
 
-          // Bottom nav
+          // Bottom nav (Settings + Logout)
           ...bottomItems.asMap().entries.map((entry) {
             final j = entry.key;
             final item = entry.value;
@@ -134,7 +141,7 @@ class _LandingState extends State<Landing> {
     final width = MediaQuery.of(context).size.width;
     final isDrawer = width < _breakpoint;
 
-    // recompute so pages line up
+    // Recompute nav lists so pages line up with selectedIndex
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const Center(child: Text('Home Page'))),
       if (_isAdmin)
@@ -145,12 +152,12 @@ class _LandingState extends State<Landing> {
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
     final bottomItems = <_NavItemData>[
-      _NavItemData(Icons.settings, 'Settings', const Center(child: Text('Settings Page'))),
+      _NavItemData(Icons.settings, 'Settings', const SummaryPage()),
       _NavItemData(Icons.logout, 'Logout', null),
     ];
 
     final totalMain = mainItems.length;
-    Widget page;
+    late final Widget page;
     if (_selectedIndex < totalMain) {
       page = mainItems[_selectedIndex].page!;
     } else {
@@ -161,12 +168,12 @@ class _LandingState extends State<Landing> {
       appBar: isDrawer
           ? AppBar(
         title: const Text('Dashboard'),
-        leading: Builder(builder: (ctx) {
-          return IconButton(
+        leading: Builder(
+          builder: (ctx) => IconButton(
             icon: const Icon(Icons.menu),
             onPressed: () => Scaffold.of(ctx).openDrawer(),
-          );
-        }),
+          ),
+        ),
       )
           : null,
       drawer: isDrawer
@@ -186,7 +193,7 @@ class _LandingState extends State<Landing> {
           Expanded(
             child: Column(
               children: [
-                // Top bar
+                // Top bar with user info
                 Container(
                   height: 64,
                   color: Colors.white,
@@ -212,10 +219,15 @@ class _LandingState extends State<Landing> {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(displayName,
-                                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    Text(
+                                      displayName,
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
                                     if (email.isNotEmpty)
-                                      Text(email, style: const TextStyle(color: Colors.grey)),
+                                      Text(
+                                        email,
+                                        style: const TextStyle(color: Colors.grey),
+                                      ),
                                   ],
                                 ),
                               ],
@@ -226,7 +238,13 @@ class _LandingState extends State<Landing> {
                   ),
                 ),
 
-                Expanded(child: Container(color: const Color(0xFFF5F5F5), child: page)),
+                // Page content
+                Expanded(
+                  child: Container(
+                    color: const Color(0xFFF5F5F5),
+                    child: page,
+                  ),
+                ),
               ],
             ),
           ),

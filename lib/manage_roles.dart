@@ -7,14 +7,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 class ManageRolesPage extends StatefulWidget {
-  const ManageRolesPage({Key? key}) : super(key: key);
+  const ManageRolesPage({super.key});
 
   @override
   State<ManageRolesPage> createState() => _ManageRolesPageState();
 }
 
 class _ManageRolesPageState extends State<ManageRolesPage> {
-  int _rowsPerPage = 5;
+  final int _rowsPerPage = 5;
   final List<String> _allRoles = ['user', 'admin', 'manager'];
   final Map<String, String> _editedRoles = {};
   final DateFormat _fmt = DateFormat.yMd().add_jm();
@@ -53,8 +53,9 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
               .orderBy('username')
               .snapshots(),
       builder: (ctx, snap) {
-        if (snap.connectionState != ConnectionState.active)
+        if (snap.connectionState != ConnectionState.active) {
           return const Center(child: CircularProgressIndicator());
+        }
 
         final docs =
             (snap.data?.docs ?? []).where((d) {
@@ -70,25 +71,31 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // header + search
-              Text(
-                'Manage Roles',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
+              Text('Manage Roles', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 12),
-              TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search users…',
-                  prefixIcon: const Icon(Icons.search),
-                  filled: true,
-                  fillColor: const Color(0xffF4F6FA),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
+
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 400, // never wider than 400px
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search users…',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: const Color(0xffF4F6FA),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onChanged: _onSearchChanged,
+                    onSubmitted: _onSearchChanged,
                   ),
                 ),
-                onChanged: _onSearchChanged, // <-- debounce here
-                onSubmitted: _onSearchChanged, // also search on enter
               ),
               const SizedBox(height: 16),
 

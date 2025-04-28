@@ -1,8 +1,12 @@
 // lib/main.dart
-import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'firebase_options.dart';
+import 'state/selection_model.dart';
 import 'login.dart';
 
 Future<void> main() async {
@@ -10,7 +14,40 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => SelectionModel(),
+      child: const AuthWatcher(),
+    ),
+  );
+}
+
+/// Listens to FirebaseAuth changes and clears the model on sign-out.
+class AuthWatcher extends StatefulWidget {
+  const AuthWatcher({super.key});
+  @override
+  State<AuthWatcher> createState() => _AuthWatcherState();
+}
+
+class _AuthWatcherState extends State<AuthWatcher> {
+  User? _prev;
+
+  @override
+  void initState() {
+    super.initState();
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      // user went from non-null to null ⇒ sign-out
+      if (_prev != null && user == null) {
+        context.read<SelectionModel>().setAll({});
+      }
+      _prev = user;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const MyApp();
+  }
 }
 
 class MyApp extends StatelessWidget {
