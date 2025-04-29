@@ -174,7 +174,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _login,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xff00abff),
+                        backgroundColor: const Color(0xff021e84),
                       ),
                       child: _isLoading
                           ? const CircularProgressIndicator(

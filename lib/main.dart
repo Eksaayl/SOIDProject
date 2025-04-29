@@ -36,7 +36,6 @@ class _AuthWatcherState extends State<AuthWatcher> {
   void initState() {
     super.initState();
     FirebaseAuth.instance.authStateChanges().listen((user) {
-      // user went from non-null to null ⇒ sign-out
       if (_prev != null && user == null) {
         context.read<SelectionModel>().setAll({});
       }
@@ -57,8 +56,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Landing Page',
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xff0073C2),
-        fontFamily: 'Poppins',
+        scaffoldBackgroundColor: const Color(0xff021e84),
       ),
       debugShowCheckedModeBanner: false,
       home: const LoginPage(),

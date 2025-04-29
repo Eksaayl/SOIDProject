@@ -2,8 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:test_project/main_part.dart';
 import 'package:test_project/state/selection_model.dart';
-import 'package:test_project/summary.dart';
+import 'package:test_project/settings.dart';
 
 import 'login.dart';
 import 'manage_roles.dart';
@@ -61,7 +62,7 @@ class _LandingState extends State<Landing> {
 
   Widget _buildSidebar(bool isDrawer) {
     final mainItems = <_NavItemData>[
-      _NavItemData(Icons.home, 'Home', const Center(child: Text('Home Page'))),
+      _NavItemData(Icons.home, 'Home', const MeditationApp()),
       if (_isAdmin)
         _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
       _NavItemData(Icons.devices, 'Devices', const Center(child: Text('Devices Page'))),
@@ -71,16 +72,15 @@ class _LandingState extends State<Landing> {
     ];
 
     final bottomItems = <_NavItemData>[
-      _NavItemData(Icons.settings, 'Settings', const SummaryPage()),
+      _NavItemData(Icons.settings, 'Settings', const SettingsPage()),
       _NavItemData(Icons.logout, 'Logout', null),
     ];
 
     return Container(
-      color: Colors.white,
+      color: Color(0xff021e84),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Logo + Title
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -89,7 +89,11 @@ class _LandingState extends State<Landing> {
                 const SizedBox(width: 8),
                 const Text(
                   'Dashboard',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ],
             ),
@@ -143,7 +147,7 @@ class _LandingState extends State<Landing> {
 
     // Recompute nav lists so pages line up with selectedIndex
     final mainItems = <_NavItemData>[
-      _NavItemData(Icons.home, 'Home', const Center(child: Text('Home Page'))),
+      _NavItemData(Icons.home, 'Home', const MeditationApp()),
       if (_isAdmin)
         _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
       _NavItemData(Icons.devices, 'Devices', const Center(child: Text('Devices Page'))),
@@ -152,7 +156,7 @@ class _LandingState extends State<Landing> {
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
     final bottomItems = <_NavItemData>[
-      _NavItemData(Icons.settings, 'Settings', const SummaryPage()),
+      _NavItemData(Icons.settings, 'Settings', const SettingsPage()),
       _NavItemData(Icons.logout, 'Logout', null),
     ];
 
@@ -167,11 +171,12 @@ class _LandingState extends State<Landing> {
     return Scaffold(
       appBar: isDrawer
           ? AppBar(
-        title: const Text('Dashboard'),
+        backgroundColor: Color(0xff021e84),
         leading: Builder(
           builder: (ctx) => IconButton(
-            icon: const Icon(Icons.menu),
+            icon: const Icon(Icons.menu, color: Colors.white),
             onPressed: () => Scaffold.of(ctx).openDrawer(),
+
           ),
         ),
       )
@@ -193,52 +198,6 @@ class _LandingState extends State<Landing> {
           Expanded(
             child: Column(
               children: [
-                // Top bar with user info
-                Container(
-                  height: 64,
-                  color: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (!isDrawer) const SizedBox(width: 12),
-                      if (!isDrawer)
-                        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                          stream: _userDocStream,
-                          builder: (ctx, snap) {
-                            if (!snap.hasData) return const Text('Loading…');
-                            final data = snap.data!.data()!;
-                            final role = (data['role'] as String?)?.toLowerCase() ?? '';
-                            final rawUsername = data['username'] as String? ?? '';
-                            final displayName = role == 'admin' ? 'Admin' : rawUsername;
-                            final email = data['email'] as String? ?? '';
-                            return Row(
-                              children: [
-                                const SizedBox(width: 12),
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      displayName,
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
-                                    ),
-                                    if (email.isNotEmpty)
-                                      Text(
-                                        email,
-                                        style: const TextStyle(color: Colors.grey),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-
-                // Page content
                 Expanded(
                   child: Container(
                     color: const Color(0xFFF5F5F5),
@@ -284,8 +243,8 @@ class _NavItemState extends State<_NavItem> {
   @override
   Widget build(BuildContext context) {
     final bg = widget.selected
-        ? Colors.blue.shade50
-        : (_hovering ? Colors.grey.shade200 : Colors.transparent);
+        ? Colors.white.withOpacity(0.1) // Selected = very slightly white
+        : (_hovering ? Colors.white.withOpacity(0.05) : Colors.transparent);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
@@ -293,8 +252,8 @@ class _NavItemState extends State<_NavItem> {
       child: Container(
         color: bg,
         child: ListTile(
-          leading: Icon(widget.icon, color: Colors.black54),
-          title: Text(widget.label, style: const TextStyle(color: Colors.black87)),
+          leading: Icon(widget.icon, color: Colors.white54),
+          title: Text(widget.label, style: const TextStyle(color: Colors.white)),
           onTap: widget.onTap,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           horizontalTitleGap: 16,

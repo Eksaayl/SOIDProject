@@ -127,7 +127,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xff0073C2),
+      backgroundColor: const Color(0xff021e84),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(
@@ -202,7 +202,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                       onPressed: _isLoading ? null : _register,
                       child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.blue)
+                          ? const CircularProgressIndicator(color: Color(0xff021e84))
                           : const Text(
                         'Sign up',
                         style: TextStyle(

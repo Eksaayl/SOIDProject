@@ -94,7 +94,7 @@ class StartupPage extends StatelessWidget {
                               : Colors.white,
                           border: Border.all(
                             color: sel
-                                ? Colors.lightBlue
+                                ? Color(0xff021e84)
                                 : Colors.grey.shade300,
                             width: sel ? 2 : 1,
                           ),
@@ -119,7 +119,7 @@ class StartupPage extends StatelessWidget {
                                 c.icon,
                                 size: 32,
                                 color: sel
-                                    ? Colors.lightBlue
+                                    ? Color(0xff021e84)
                                     : Colors.black54,
                               ),
                               const SizedBox(height: 12),
@@ -129,7 +129,7 @@ class StartupPage extends StatelessWidget {
                                 style: TextStyle(
                                   fontWeight: FontWeight.w500,
                                   color: sel
-                                      ? Colors.lightBlue
+                                      ? Color(0xff021e84)
                                       : Colors.black87,
                                 ),
                               ),
@@ -148,7 +148,7 @@ class StartupPage extends StatelessWidget {
                 height: 48,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xff00abff),
+                    backgroundColor: Color(0xff021e84),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
