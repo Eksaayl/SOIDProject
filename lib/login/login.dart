@@ -1,13 +1,11 @@
-// lib/login.dart
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-// for MyHomePage
-import 'package:test_project/startup.dart';
-import 'register.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:test_project/startup.dart';
+import 'forgot_password.dart';
+import 'register.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -56,6 +54,27 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _sendPasswordResetEmail() async {
+    String email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your email')),
+      );
+      return;
+    }
+
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password reset email sent')),
+      );
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.message}')),
+      );
+    }
+  }
+
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     try {
@@ -79,7 +98,6 @@ class _LoginPageState extends State<LoginPage> {
       debugPrint('🔑 Google sign-in for uid=${user.uid}, isNew=$isNew');
 
       if (isNew) {
-        // wrap the Firestore write in its own try/catch
         try {
           await _firestore.collection('users').doc(user.uid).set({
             'username': user.displayName ?? '',
@@ -125,7 +143,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -166,6 +183,19 @@ class _LoginPageState extends State<LoginPage> {
                     obscureText: true,
                     validator: (v) =>
                     v == null || v.isEmpty ? 'Enter your password' : null,
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () {
+                        // Navigate to the ForgotPasswordPage
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
+                        );
+                      },
+                      child: const Text('Forgot Password?', style: TextStyle(color: Colors.blue)),
+                    ),
                   ),
                   const SizedBox(height: 30),
                   SizedBox(

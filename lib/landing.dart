@@ -6,7 +6,8 @@ import 'package:test_project/main_part.dart';
 import 'package:test_project/state/selection_model.dart';
 import 'package:test_project/settings.dart';
 
-import 'login.dart';
+import 'History.dart';
+import 'login/login.dart';
 import 'manage_roles.dart';
 
 class Landing extends StatefulWidget {
@@ -52,7 +53,6 @@ class _LandingState extends State<Landing> {
       return;
     }
 
-    // otherwise, just select the page
     setState(() => _selectedIndex = idx);
     if (MediaQuery.of(context).size.width < _breakpoint) {
       Navigator.of(context).pop();
@@ -62,10 +62,10 @@ class _LandingState extends State<Landing> {
 
   Widget _buildSidebar(bool isDrawer) {
     final mainItems = <_NavItemData>[
-      _NavItemData(Icons.home, 'Home', const MeditationApp()),
+      _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin)
         _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      _NavItemData(Icons.devices, 'Devices', const Center(child: Text('Devices Page'))),
+      _NavItemData(Icons.history, 'History', HistoryPage(documentId: '',)),
       _NavItemData(Icons.apps, 'Applications', const Center(child: Text('Applications Page'))),
       _NavItemData(Icons.shopping_basket, 'Orders', const Center(child: Text('Orders Page'))),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
@@ -101,7 +101,6 @@ class _LandingState extends State<Landing> {
 
           const Divider(),
 
-          // Main nav
           Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.only(top: 8),
@@ -121,7 +120,6 @@ class _LandingState extends State<Landing> {
 
           const Divider(),
 
-          // Bottom nav (Settings + Logout)
           ...bottomItems.asMap().entries.map((entry) {
             final j = entry.key;
             final item = entry.value;
@@ -145,12 +143,11 @@ class _LandingState extends State<Landing> {
     final width = MediaQuery.of(context).size.width;
     final isDrawer = width < _breakpoint;
 
-    // Recompute nav lists so pages line up with selectedIndex
     final mainItems = <_NavItemData>[
-      _NavItemData(Icons.home, 'Home', const MeditationApp()),
+      _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin)
         _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      _NavItemData(Icons.devices, 'Devices', const Center(child: Text('Devices Page'))),
+      _NavItemData(Icons.history, 'History', HistoryPage(documentId: '2Fsections',)),
       _NavItemData(Icons.apps, 'Applications', const Center(child: Text('Applications Page'))),
       _NavItemData(Icons.shopping_basket, 'Orders', const Center(child: Text('Orders Page'))),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
@@ -243,7 +240,7 @@ class _NavItemState extends State<_NavItem> {
   @override
   Widget build(BuildContext context) {
     final bg = widget.selected
-        ? Colors.white.withOpacity(0.1) // Selected = very slightly white
+        ? Colors.white.withOpacity(0.1)
         : (_hovering ? Colors.white.withOpacity(0.05) : Colors.transparent);
 
     return MouseRegion(

@@ -59,7 +59,7 @@ class SettingsPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'General Settings',
+                    'Change the preferred project',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
