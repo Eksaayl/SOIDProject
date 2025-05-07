@@ -147,7 +147,7 @@ class _LandingState extends State<Landing> {
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin)
         _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      _NavItemData(Icons.history, 'History', HistoryPage(documentId: '2Fsections',)),
+      _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
       _NavItemData(Icons.apps, 'Applications', const Center(child: Text('Applications Page'))),
       _NavItemData(Icons.shopping_basket, 'Orders', const Center(child: Text('Orders Page'))),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),

@@ -1,25 +1,24 @@
+// (Full PartIAFormPage code without Quill integration)
+// This is the pre-Quill version using only TextEditingController for functionsSub
+
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:flutter_quill/flutter_quill.dart';
-import 'package:flutter_quill/quill_delta.dart';
-import 'package:archive/archive.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
-import 'package:file_saver/file_saver.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
-/// Escapes special XML characters for use in the XML content
-String xmlEscape(String input) {
-  return input
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('\"', '&quot;')
-      .replaceAll("'", '&apos;');
-}
+import 'package:archive/archive.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_saver/file_saver.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
+
+String xmlEscape(String input) => input
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
 
 Future<Uint8List> generateDocxBySearchReplace({
   required String assetPath,
@@ -27,17 +26,20 @@ Future<Uint8List> generateDocxBySearchReplace({
 }) async {
   final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
   final archive = ZipDecoder().decodeBytes(bytes);
+  final docFile = archive.firstWhere((f) => f.name == 'word/document.xml');
+  String xmlStr = utf8.decode(docFile.content as List<int>);
 
-  // Pull out the main document XML
-  final original = archive.firstWhere((f) => f.name == 'word/document.xml');
-  String xmlStr = utf8.decode(original.content as List<int>);
+  final pattern = RegExp(r'\$\{(.+?)\}');
+  final allKeys = pattern.allMatches(xmlStr).map((m) => m.group(1)!).toSet();
 
-  // Apply every replacement from the provided map
-  for (final entry in replacements.entries) {
-    xmlStr = xmlStr.replaceAll(entry.key, xmlEscape(entry.value));
-  }
+  final complete = <String, String>{
+    for (var key in allKeys) '\${$key}': replacements[key] ?? '',
+  };
 
-  // Build a fresh archive with the updated document.xml
+  complete.forEach((ph, val) {
+    xmlStr = xmlStr.replaceAll(ph, xmlEscape(val));
+  });
+
   final newArchive = Archive();
   for (final file in archive) {
     if (file.name == 'word/document.xml') {
@@ -52,247 +54,238 @@ Future<Uint8List> generateDocxBySearchReplace({
   return Uint8List.fromList(out);
 }
 
-class IsspSectionEditor extends StatefulWidget {
-  final String sectionId;
-  final String sectionTitle;
+class PartIAFormPage extends StatefulWidget {
   final String documentId;
-  final VoidCallback onBackPressed;
-
-  const IsspSectionEditor({
-    Key? key,
-    required this.sectionId,
-    required this.sectionTitle,
-    required this.documentId,
-    required this.onBackPressed,
-  }) : super(key: key);
-
+  const PartIAFormPage({Key? key, required this.documentId}) : super(key: key);
   @override
-  _IsspSectionEditorState createState() => _IsspSectionEditorState();
+  _PartIAFormPageState createState() => _PartIAFormPageState();
 }
 
-class _IsspSectionEditorState extends State<IsspSectionEditor> {
-  late QuillController _controller;
+class _PartIAFormPageState extends State<PartIAFormPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  late TextEditingController docNameCtrl;
+  late TextEditingController legalBasisCtrl;
+  late TextEditingController functionsSubCtrl;
+  late TextEditingController visionCtrl;
+  late TextEditingController missionCtrl;
+  late TextEditingController pillar1Ctrl;
+  late TextEditingController pillar2Ctrl;
+  late TextEditingController pillar3Ctrl;
+
   bool _loading = true;
   bool _saving = false;
-  bool _isFinalized = false;
+  bool _compiling = false;
+  bool _isFinal = false;
+
   late DocumentReference _sectionRef;
-
-  final User? _currentUser = FirebaseAuth.instance.currentUser;
-
-  String get _userId =>
-      _currentUser?.displayName ??
-      _currentUser?.email ??
-      _currentUser?.uid ??
-      'unknown';
+  final _user = FirebaseAuth.instance.currentUser;
+  String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
 
   @override
   void initState() {
     super.initState();
+    docNameCtrl = TextEditingController();
+    legalBasisCtrl = TextEditingController();
+    functionsSubCtrl = TextEditingController();
+    visionCtrl = TextEditingController();
+    missionCtrl = TextEditingController();
+    pillar1Ctrl = TextEditingController();
+    pillar2Ctrl = TextEditingController();
+    pillar3Ctrl = TextEditingController();
+
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(widget.documentId)
         .collection('sections')
-        .doc(widget.sectionId);
+        .doc('I.A');
+
     _loadContent();
   }
 
   Future<void> _loadContent() async {
     try {
       final snap = await _sectionRef.get();
-      final data = snap.data() as Map<String, dynamic>?;
+      final data = snap.data() as Map<String, dynamic>? ?? {};
 
-      if (snap.exists && data != null && data.containsKey('content')) {
-        final delta = Delta.fromJson(jsonDecode(data['content'] as String));
-        _controller = QuillController(
-          document: Document.fromDelta(delta),
-          selection: const TextSelection.collapsed(offset: 0),
-        );
-        _isFinalized = data['isFinalized'] ?? false;
-        // Set readOnly based on isFinalized value
-        _controller.readOnly = _isFinalized;
-      } else {
-        _controller = QuillController.basic();
-        await _saveContent(initialSave: true);
-      }
+      docNameCtrl.text = data['documentName'] ?? '';
+      legalBasisCtrl.text = data['legalBasis'] ?? '';
+      functionsSubCtrl.text = data['functionsSub'] ?? '';
+      visionCtrl.text = data['visionStatement'] ?? '';
+      missionCtrl.text = data['missionStatement'] ?? '';
+      pillar1Ctrl.text = data['pillar1'] ?? '';
+      pillar2Ctrl.text = data['pillar2'] ?? '';
+      pillar3Ctrl.text = data['pillar3'] ?? '';
+      _isFinal = data['isFinalized'] == true;
     } catch (e) {
-      _controller = QuillController.basic();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Load error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Load error: $e')));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() => _loading = false);
     }
   }
 
-  Future<void> _saveContent({bool initialSave = false}) async {
-    if (_saving || _isFinalized) return;
-
-    setState(() {
-      _saving = true; // Show loading indicator
-    });
-
-    try {
-      final contentJson = jsonEncode(_controller.document.toDelta().toJson());
-      final map = <String, dynamic>{
-        'content': contentJson,
-        'lastModified': FieldValue.serverTimestamp(),
-        'modifiedBy': _userId,
-      };
-
-      if (initialSave) {
-        map.addAll({
-          'sectionId': widget.sectionId,
-          'sectionTitle': widget.sectionTitle,
-          'createdAt': FieldValue.serverTimestamp(),
-          'createdBy': _userId,
-          'isFinalized': false,
-        });
-      }
-
-      await _sectionRef.set(map, SetOptions(merge: true));
-
-      await FirebaseFirestore.instance
-          .collection('issp_documents')
-          .doc(widget.documentId)
-          .set({
-            'sections': {
-              widget.sectionId: {
-                'lastModified': FieldValue.serverTimestamp(),
-                'status': 'in_progress',
-              },
-            },
-            'lastModified': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('${widget.sectionTitle} saved')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Save error: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false); // Hide loading indicator
-    }
-  }
-
-  Future<void> _exportDocx() async {
+  Future<void> _save({bool finalize = false}) async {
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
+    final payload = {
+      'documentName': docNameCtrl.text.trim(),
+      'legalBasis': legalBasisCtrl.text.trim(),
+      'functionsSub': functionsSubCtrl.text.trim(),
+      'visionStatement': visionCtrl.text.trim(),
+      'missionStatement': missionCtrl.text.trim(),
+      'pillar1': pillar1Ctrl.text.trim(),
+      'pillar2': pillar2Ctrl.text.trim(),
+      'pillar3': pillar3Ctrl.text.trim(),
+      'modifiedBy': _userId,
+      'lastModified': FieldValue.serverTimestamp(),
+      'isFinalized': finalize || _isFinal,
+    };
+
+    if (!_isFinal) {
+      payload['createdAt'] = FieldValue.serverTimestamp();
+      payload['createdBy'] = _userId;
+    }
+
     try {
-      final docname =
-          _controller.document.toPlainText().split('\n').first.trim();
-      final content = _controller.document.toPlainText();
+      await _sectionRef.set(payload, SetOptions(merge: true));
+      setState(() => _isFinal = true);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved')));
+      Navigator.of(context).pop();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save error: $e')));
+    } finally {
+      setState(() => _saving = false);
+    }
+  }
 
-      final replacements = {
-        r'${docname}': docname, // docname placeholder
-        r'${content}': content, // content placeholder
-      };
+  Future<void> _compileDocx() async {
+    setState(() => _compiling = true);
 
-      final outBytes = await generateDocxBySearchReplace(
+    final map = {
+      'documentName': docNameCtrl.text.trim(),
+      'legalBasis': legalBasisCtrl.text.trim(),
+      'functionsSub': functionsSubCtrl.text.trim(),
+      'visionStatement': visionCtrl.text.trim(),
+      'missionStatement': missionCtrl.text.trim(),
+      'pillar1': pillar1Ctrl.text.trim(),
+      'pillar2': pillar2Ctrl.text.trim(),
+      'pillar3': pillar3Ctrl.text.trim(),
+    };
+
+    try {
+      final bytes = await generateDocxBySearchReplace(
         assetPath: 'assets/templates.docx',
-        replacements: replacements,
+        replacements: map,
       );
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: docname,
-          bytes: outBytes,
+          name: 'Part_I.A',
+          bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path =
-            '${dir.path}/${docname}_${DateTime.now().millisecondsSinceEpoch}.docx';
-        await File(path).writeAsBytes(outBytes);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Exported to $path')));
+        final path = '${dir.path}/Part_I.A_${DateTime.now().millisecondsSinceEpoch}.docx';
+        await File(path).writeAsBytes(bytes);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Compiled to $path')));
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Export error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Compile error: $e')));
     } finally {
-      if (mounted) setState(() => _saving = false); // Hide loading indicator
+      setState(() => _compiling = false);
     }
+  }
+
+  Widget _buildField(String label, TextEditingController ctrl, {bool multiline = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: TextFormField(
+        controller: ctrl,
+        enabled: !_isFinal,
+        maxLines: multiline ? null : 1,
+        decoration: InputDecoration(labelText: label, border: OutlineInputBorder()),
+        validator: (v) => v == null || v.trim().isEmpty ? '$label is required' : null,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: widget.onBackPressed,
-          color: Colors.white,
-        ),
-        title: Text(
-          'Editing ${widget.sectionTitle}',
-          style: const TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.blue[900],
+        title: const Text('Part I.A'),
         actions: [
           if (_saving)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(Colors.white),
-                strokeWidth: 2,
-              ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
             )
           else ...[
             IconButton(
               icon: const Icon(Icons.save),
-              onPressed: _saving || _isFinalized ? null : () => _saveContent(),
-              color: Colors.white,
+              onPressed: _isFinal ? null : () => _save(finalize: false),
             ),
             IconButton(
-              icon: const Icon(Icons.download),
-              onPressed: _exportDocx,
-              color: Colors.white,
+              icon: const Icon(Icons.check),
+              tooltip: 'Finalize',
+              onPressed: _isFinal ? null : () => _save(finalize: true),
             ),
-          ],
-        ],
-      ),
-      body: Column(
-        children: [
-          if (!_isFinalized) QuillSimpleToolbar(controller: _controller, config: QuillSimpleToolbarConfig(showAlignmentButtons: !_isFinalized, showBoldButton: !_isFinalized, showItalicButton: !_isFinalized, showUnderLineButton: !_isFinalized)),
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 5,
-                  ),
-                ],
+            if (_compiling)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.picture_as_pdf),
+                onPressed: _compileDocx,
               ),
-              child: QuillEditor.basic(controller: _controller),
-            ),
-          ),
+          ]
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.check),
-        onPressed: _saving || _isFinalized ? null : () => _saveContent(),
-        // Disable during saving or if finalized
-        backgroundColor: Colors.blue[900],
+      body: _isFinal
+          ? Center(child: Text('Section finalized', style: TextStyle(color: Colors.grey)))
+          : Padding(
+        padding: const EdgeInsets.all(12),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            children: [
+              _buildField('Document Name', docNameCtrl),
+              _buildField('Legal Basis', legalBasisCtrl),
+              _buildField('Functions', functionsSubCtrl, multiline: true),
+              _buildField('Vision Statement', visionCtrl),
+              _buildField('Mission Statement', missionCtrl),
+              _buildField('Pillar 1', pillar1Ctrl),
+              _buildField('Pillar 2', pillar2Ctrl),
+              _buildField('Pillar 3', pillar3Ctrl),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    docNameCtrl.dispose();
+    legalBasisCtrl.dispose();
+    functionsSubCtrl.dispose();
+    visionCtrl.dispose();
+    missionCtrl.dispose();
+    pillar1Ctrl.dispose();
+    pillar2Ctrl.dispose();
+    pillar3Ctrl.dispose();
+    super.dispose();
   }
 }

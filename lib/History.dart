@@ -1,84 +1,107 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class HistoryPage extends StatelessWidget {
   final String documentId;
-
-  HistoryPage({required this.documentId});
+  const HistoryPage({Key? key, required this.documentId}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final sectionsRef = FirebaseFirestore.instance
+        .collection('issp_documents')
+        .doc(documentId)
+        .collection('sections');
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('History'),
+        title: Text('History • $documentId'),
+        centerTitle: true,
       ),
-      body: FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance.collection('issp_documents').doc(documentId).get(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+      body: FutureBuilder<QuerySnapshot>(
+        future: sectionsRef.get(),
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting)
             return Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Something went wrong: ${snapshot.error}'));
-          }
+          if (snap.hasError)
+            return Center(child: Text('Error: ${snap.error}'));
 
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return Center(child: Text('No data available.'));
-          }
+          final docs = snap.data?.docs ?? [];
+          if (docs.isEmpty)
+            return Center(child: Text('No sections found.', style: TextStyle(fontSize: 16)));
 
-          // Extract the entire document data from the snapshot
-          var data = snapshot.data!.data() as Map<String, dynamic>;
+          return ListView.builder(
+            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            itemCount: docs.length,
+            itemBuilder: (context, i) {
+              final docSnap = docs[i];
+              final data = docSnap.data() as Map<String, dynamic>;
 
-          // Create a list of all fields from the document
-          List<Widget> documentFields = [];
+              String formatTimestamp(dynamic ts) {
+                if (ts is Timestamp) {
+                  return DateFormat.yMMMd().add_jm().format(ts.toDate());
+                }
+                return '—';
+              }
 
-          data.forEach((key, value) {
-            // Check if the value is a nested map (i.e., sections), and handle it accordingly
-            if (value is Map) {
-              // If it's a nested map, iterate over its contents (like "sections")
-              documentFields.add(
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    '$key:',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+              return Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              );
-              value.forEach((sectionKey, sectionValue) {
-                documentFields.add(
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                margin: EdgeInsets.only(bottom: 12),
+                child: ExpansionTile(
+                  leading: Icon(Icons.folder_open, color: Theme.of(context).primaryColor),
+                  title: Text(
+                    data['sectionTitle'] ?? docSnap.id,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    'Last modified: ${formatTimestamp(data['lastModified'])}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                  ),
+                  childrenPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  children: [
+                    SizedBox(height: 12),
+
+                    // metadata chips row
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
-                        Text('$sectionKey:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                        Text('Last Modified: ${sectionValue['lastModified']}', style: TextStyle(fontSize: 14)),
-                        Text('Status: ${sectionValue['status']}', style: TextStyle(fontSize: 14)),
+                        Chip(
+                          avatar: Icon(
+                            data['isFinalized'] == true ? Icons.check_circle : Icons.hourglass_bottom,
+                            size: 20,
+                            color: data['isFinalized'] == true ? Colors.green : Colors.orange,
+                          ),
+                          label: Text(
+                            data['isFinalized'] == true ? 'Finalized' : 'In Progress',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        Chip(
+                          avatar: Icon(Icons.person, size: 20),
+                          label: Text(
+                            data['createdBy'] ?? '—',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        Chip(
+                          avatar: Icon(Icons.calendar_today, size: 20),
+                          label: Text(
+                            'Created: ${formatTimestamp(data['createdAt'])}',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                );
-              });
-            } else {
-              // If it's a simple field, just display it
-              documentFields.add(
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Text(
-                    '$key: $value',
-                    style: TextStyle(fontSize: 14),
-                  ),
+
+                    SizedBox(height: 8),
+                  ],
                 ),
               );
-            }
-          });
-
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ListView(
-              children: documentFields,  // Display the dynamically generated fields
-            ),
+            },
           );
         },
       ),

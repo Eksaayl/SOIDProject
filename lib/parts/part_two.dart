@@ -67,7 +67,6 @@ class _Part2State extends State<Part2> {
         ),
         const SizedBox(height: 24),
 
-        // Layout for larger screens
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
