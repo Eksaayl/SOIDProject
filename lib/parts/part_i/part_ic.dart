@@ -1,14 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:file_saver/file_saver.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_quill/flutter_quill.dart' hide Text;
+import 'package:flutter_html/flutter_html.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -22,26 +24,26 @@ Future<Uint8List> generateDocxWithImage({
   required String placeholder,
   required Uint8List imageBytes,
 }) async {
-  final bytes   = (await rootBundle.load(assetPath)).buffer.asUint8List();
+  final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
   final archive = ZipDecoder().decodeBytes(bytes);
 
+  // Add image to media folder
   const imagePath = 'word/media/image1.png';
   archive.addFile(ArchiveFile(imagePath, imageBytes.length, imageBytes));
 
+  // Add relationship
+  final relsFile = archive.firstWhere((f) => f.name == 'word/_rels/document.xml.rels');
+  var relsXml = utf8.decode(relsFile.content as List<int>);
+  const rid = 'rId1000';
+  if (!relsXml.contains(rid)) {
+    relsXml = relsXml.replaceFirst(
+      '</Relationships>',
+      '''<Relationship Id="$rid" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/></Relationships>''',
+    );
+    archive.addFile(ArchiveFile('word/_rels/document.xml.rels', utf8.encode(relsXml).length, utf8.encode(relsXml)));
+  }
 
-  final rels = archive.firstWhere((f) => f.name == 'word/_rels/document.xml.rels');
-  var relsXml = utf8.decode(rels.content as List<int>);
-  const rid = 'rIdImage1';
-  relsXml = relsXml.replaceFirst(
-    '</Relationships>',
-    '''
-    <Relationship Id="$rid"
-                  Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
-                  Target="media/image1.png"/>
-  </Relationships>''',
-  );
-  archive.addFile(ArchiveFile('word/_rels/document.xml.rels', utf8.encode(relsXml).length, utf8.encode(relsXml)));
-
+  // Replace placeholder with image
   final doc = archive.firstWhere((f) => f.name == 'word/document.xml');
   var docXml = utf8.decode(doc.content as List<int>);
   final drawingXml = '''
@@ -85,140 +87,342 @@ class PartICFormPage extends StatefulWidget {
 }
 
 class _PartICFormPageState extends State<PartICFormPage> {
+  final _formKey = GlobalKey<FormState>();
   Uint8List? _pickedBytes;
-  bool     _loading   = true;
-  bool     _saving    = false;
-  bool     _compiling = false;
-  bool     _isFinal   = false;
-  late CollectionReference _sections;
+  bool _loading = true;
+  bool _saving = false;
+  bool _compiling = false;
+  bool _isFinal = false;
+
+  late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
-  String get _userId =>
-      _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
+  String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
 
   @override
   void initState() {
     super.initState();
-    _sections = FirebaseFirestore.instance
+    _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(widget.documentId)
-        .collection('sections');
-    _load();
+        .collection('sections')
+        .doc('I.C');
+
+    _loadContent();
   }
 
-  Future<void> _load() async {
+  Future<void> _loadContent() async {
     try {
-      final snap = await _sections.doc('I.C').get();
-      final d = snap.data() as Map<String,dynamic>? ?? {};
-      final b64 = d['functionalInterface'] as String?;
-      if (b64 != null) _pickedBytes = base64Decode(b64);
-      _isFinal = d['isFinalized'] == true;
+      final doc = await _sectionRef.get();
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data != null) {
+        if (data['functionalInterface'] != null) {
+          setState(() {
+            _pickedBytes = base64Decode(data['functionalInterface'] as String);
+            _isFinal = data['finalized'] as bool? ?? false;
+          });
+        }
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Load error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Load error: $e'))
+      );
     } finally {
       setState(() => _loading = false);
     }
   }
 
   Future<void> _pickImage() async {
-    final x = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (x != null) {
-      final bytes = await x.readAsBytes();
-      setState(() => _pickedBytes = bytes);
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile != null) {
+        final bytes = await pickedFile.readAsBytes();
+        setState(() => _pickedBytes = bytes);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image pick error: $e'))
+      );
     }
   }
 
-  Future<void> _saveSection() async {
-    if (_pickedBytes == null) return;
+  Future<void> _saveSection({bool finalize = false}) async {
+    if (_pickedBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select an image first'))
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       final payload = {
         'functionalInterface': base64Encode(_pickedBytes!),
-        'modifiedBy': _userId,
         'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': _isFinal
+        'lastModifiedBy': _userId,
+        'finalized': finalize,
       };
-      if (!_isFinal) {
-        payload['createdBy'] = _userId;
-        payload['createdAt'] = FieldValue.serverTimestamp();
+
+      await _sectionRef.set(payload, SetOptions(merge: true));
+      setState(() => _isFinal = finalize);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
+      );
+      
+      if (finalize) {
+        Navigator.of(context).pop();
       }
-      await _sections.doc('I.C').set(payload, SetOptions(merge:true));
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Section saved')));
-    } catch(e){
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save error: $e'))
+      );
     } finally {
       setState(() => _saving = false);
     }
   }
 
   Future<void> _compileDocx() async {
-    if (_pickedBytes == null) return;
+    if (_pickedBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select an image first'))
+      );
+      return;
+    }
+
     setState(() => _compiling = true);
     try {
-      final docBytes = await generateDocxWithImage(
+      final bytes = await generateDocxWithImage(
         assetPath: 'assets/templates_c.docx',
-        placeholder: r'${functionalInterface}',
+        placeholder: '\${functionalInterface}',
         imageBytes: _pickedBytes!,
       );
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
           name: 'Part_I.C',
-          bytes: docBytes,
+          bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
         final path = '${dir.path}/Part_I.C_${DateTime.now().millisecondsSinceEpoch}.docx';
-        await File(path).writeAsBytes(docBytes);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to $path')));
+        await File(path).writeAsBytes(bytes);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Compiled to $path'))
+        );
       }
-    } catch(e){
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Compile error: $e')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Compile error: $e'))
+      );
     } finally {
       setState(() => _compiling = false);
     }
   }
 
+  void _showHtmlPreview() {
+    final html = buildPartICPreviewHtml(
+      functionalInterface: _pickedBytes != null ? base64Encode(_pickedBytes!) : '',
+    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => HtmlPreviewPageIC(html: html)),
+    );
+  }
+
   @override
-  Widget build(BuildContext ctx) {
+  Widget build(BuildContext context) {
     if (_loading) {
-      return Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     return Scaffold(
-      body: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children:[
-          _pickedBytes != null
-              ? Image.memory(_pickedBytes!, width:200, height:120, fit:BoxFit.cover)
-              : Icon(Icons.developer_board, size:100, color:Colors.grey),
-          const SizedBox(height:12),
-
-          ElevatedButton.icon(
-            icon: Icon(Icons.upload_file),
-            label: Text(_pickedBytes==null ? 'Upload Interface' : 'Change Interface'),
-            onPressed: _isFinal ? null : _pickImage,
-          ),
-          const SizedBox(height:24),
-
-          _saving
-              ? CircularProgressIndicator()
-              : ElevatedButton.icon(
-            icon: Icon(Icons.save),
-            label: Text('Save Section'),
-            onPressed: _isFinal ? null : _saveSection,
-          ),
-          const SizedBox(height:12),
-
-          _compiling
-              ? CircularProgressIndicator()
-              : ElevatedButton.icon(
-            icon: Icon(Icons.picture_as_pdf),
-            label: Text('Compile Part I.C'),
-            onPressed: _isFinal ? null : _compileDocx,
-          ),
-        ]),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text('Part I.C - Functional Interface'),
+        actions: [
+          if (_saving || _compiling)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+            )
+          else ...[
+            IconButton(
+              icon: const Icon(Icons.save),
+              onPressed: _isFinal ? null : () => _saveSection(finalize: false),
+              tooltip: 'Save',
+            ),
+            IconButton(
+              icon: const Icon(Icons.check),
+              onPressed: _isFinal ? null : () => _saveSection(finalize: true),
+              tooltip: 'Finalize',
+            ),
+            IconButton(
+              icon: const Icon(Icons.file_download),
+              onPressed: _compiling ? null : _compileDocx,
+              tooltip: 'Compile DOCX',
+            ),
+            IconButton(
+              icon: const Icon(Icons.remove_red_eye),
+              tooltip: 'Preview as HTML',
+              onPressed: _showHtmlPreview,
+            ),
+          ],
+        ],
       ),
+      body: _isFinal
+        ? Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock, size: 48, color: Colors.grey),
+                SizedBox(height: 12),
+                Text(
+                  'This section has been finalized.',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ],
+            ),
+          )
+        : Form(
+            key: _formKey,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_pickedBytes != null)
+                    Container(
+                      width: 400,
+                      height: 240,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 2,
+                          style: BorderStyle.solid,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Image.memory(
+                        _pickedBytes!,
+                        fit: BoxFit.contain,
+                      ),
+                    )
+                  else
+                    Container(
+                      width: 400,
+                      height: 240,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 2,
+                          style: BorderStyle.solid,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.image_outlined, size: 64, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text(
+                            'No image selected',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.upload_file),
+                    label: Text(_pickedBytes == null ? 'Upload Interface' : 'Change Interface'),
+                    onPressed: _isFinal ? null : _pickImage,
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
     );
   }
+}
+
+class HtmlPreviewPageIC extends StatelessWidget {
+  final String html;
+  const HtmlPreviewPageIC({required this.html, Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Preview')),
+      body: SingleChildScrollView(child: Html(data: html)),
+    );
+  }
+}
+
+String buildPartICPreviewHtml({
+  required String functionalInterface,
+}) {
+  return '''
+  <html>
+    <head>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500&display=swap');
+        body {
+          font-family: 'Poppins', Arial, sans-serif;
+          background: #f6f8fa;
+          margin: 0;
+          padding: 0;
+        }
+        .container {
+          max-width: 800px;
+          margin: 32px auto;
+          background-color: #fff;
+        }
+        .card {
+          background: #fff;
+          border-radius: 14px;
+          box-shadow: 0 2px 12px rgba(2,30,132,0.10);
+          padding: 24px 28px 20px 28px;
+          margin-bottom: 28px;
+          border: 1px solid #e0e4ea;
+        }
+        .section-title {
+          color: #021e84;
+          font-size: 1.1em;
+          margin-bottom: 8px;
+          font-weight: 600;
+          letter-spacing: 0.5px;
+        }
+        .value {
+          margin-bottom: 4px;
+          font-size: 1.05em;
+        }
+        img {
+          max-width: 100%;
+          height: auto;
+          border-radius: 8px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="card">
+          <div class="section-title">Functional Interface</div>
+          <div class="value">
+            <img src="data:image/png;base64,$functionalInterface" alt="Functional Interface" />
+          </div>
+        </div>
+      </div>
+    </body>
+  </html>
+  ''';
 }
