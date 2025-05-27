@@ -1,5 +1,3 @@
-// lib/main.dart
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
@@ -10,13 +8,17 @@ import 'state/selection_model.dart';
 import 'login/login.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
-
+import 'landing.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  
+  await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+  
   runApp(
     ChangeNotifierProvider(
       create: (_) => SelectionModel(),
@@ -25,7 +27,6 @@ Future<void> main() async {
   );
 }
 
-/// Listens to FirebaseAuth changes and clears the model on sign-out.
 class AuthWatcher extends StatefulWidget {
   const AuthWatcher({super.key});
   @override
@@ -48,32 +49,38 @@ class _AuthWatcherState extends State<AuthWatcher> {
 
   @override
   Widget build(BuildContext context) {
-    return const MyApp();
-  }
-}
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        Widget home;
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          home = const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        } else if (snapshot.hasData) {
+          home = const Landing();
+        } else {
+          home = const LoginPage();
+        }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Landing Page',
-      theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xff021e84),
-      ),
-      debugShowCheckedModeBanner: false,
-      home: const LoginPage(),
-
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        FlutterQuillLocalizations.delegate,
-      ],
-
-      supportedLocales: const [
-        Locale('en'),
-      ],
+        return MaterialApp(
+          title: 'Landing Page',
+          theme: ThemeData(
+            scaffoldBackgroundColor: const Color(0xff021e84),
+          ),
+          debugShowCheckedModeBanner: false,
+          home: home,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            FlutterQuillLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('en'),
+          ],
+        );
+      },
     );
   }
 }

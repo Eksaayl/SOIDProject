@@ -7,101 +7,15 @@ import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:archive/archive.dart';
 
-String xmlEscape(String input) => input
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
-
-Future<Uint8List> generateDocxBySearchReplace({
-  required String assetPath,
-  required Map<String, String> replacements,
-}) async {
-  print('Loading template from: $assetPath');
-  final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
-  print('Template file size: ${bytes.length} bytes');
-
-  final archive = ZipDecoder().decodeBytes(bytes);
-  final docFile = archive.firstWhere((f) => f.name == 'word/document.xml');
-  String xmlStr = utf8.decode(docFile.content as List<int>);
-
-  print('Original XML content (first 500 chars):');
-  print(xmlStr.substring(0, xmlStr.length > 500 ? 500 : xmlStr.length));
-
-  // First, clean up the XML by removing Word's internal tags within placeholders
-  final cleanXml = xmlStr.replaceAllMapped(
-    RegExp(r'\$\{.*?\}', multiLine: true, dotAll: true),
-    (match) {
-      String placeholder = match.group(0)!;
-      // Remove all XML tags within the placeholder
-      placeholder = placeholder.replaceAll(RegExp(r'<[^>]+>'), '');
-      // Remove any extra whitespace
-      placeholder = placeholder.replaceAll(RegExp(r'\s+'), '');
-      return placeholder;
-    },
-  );
-
-  print('Cleaned XML placeholders:');
-  print(cleanXml.substring(0, cleanXml.length > 500 ? 500 : cleanXml.length));
-
-  final pattern = RegExp(r'\$\{(.+?)\}');
-  final allKeys = pattern.allMatches(cleanXml).map((m) => m.group(1)!).toSet();
-
-  print('Found placeholders: $allKeys');
-  print('Provided replacements: ${replacements.keys}');
-
-  final complete = <String, String>{
-    for (var key in allKeys) '\${$key}': replacements[key] ?? '',
-  };
-
-  print('Final replacements map: $complete');
-
-  String finalXml = cleanXml;
-  complete.forEach((ph, val) {
-    String processedValue = val;
-
-    // Special handling for placeholders with multiple items
-    if (ph == '\${strategicChallenges}' && val.contains('•')) {
-      // Count the number of bullet points to determine if there are multiple items
-      final bulletCount = '•'.allMatches(val).length;
-      if (bulletCount > 1) {
-        // Format with proper Word XML paragraph breaks between bullet points
-        processedValue = val.replaceAll('\n\n', '\n\n\n');
-      }
-    }
-
-    print(
-      'Replacing $ph with ${processedValue.length > 50 ? "${processedValue.substring(0, 50)}..." : processedValue}',
-    );
-    finalXml = finalXml.replaceAll(ph, xmlEscape(processedValue));
-  });
-
-  final newArchive = Archive();
-  for (final file in archive) {
-    if (file.name == 'word/document.xml') {
-      final data = utf8.encode(finalXml);
-      newArchive.addFile(ArchiveFile(file.name, data.length, data));
-    } else {
-      newArchive.addFile(file);
-    }
-  }
-
-  final out = ZipEncoder().encode(newArchive)!;
-  return Uint8List.fromList(out);
-}
-
-class PartIDFormPage extends StatefulWidget {
+class PartIEFormPage extends StatefulWidget {
   final String documentId;
-  const PartIDFormPage({Key? key, required this.documentId}) : super(key: key);
+  const PartIEFormPage({Key? key, required this.documentId}) : super(key: key);
   @override
-  _PartIDFormPageState createState() => _PartIDFormPageState();
+  _PartIEFormPageState createState() => _PartIEFormPageState();
 }
 
-class _PartIDFormPageState extends State<PartIDFormPage> {
+class _PartIEFormPageState extends State<PartIEFormPage> {
   final _formKey = GlobalKey<FormState>();
   Uint8List? _uploadedFileBytes;
   String? _fileName;
@@ -122,8 +36,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         .collection('issp_documents')
         .doc(widget.documentId)
         .collection('sections')
-        .doc('I.D');
-
+        .doc('I.E');
     _loadData();
   }
 
@@ -156,7 +69,6 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         type: FileType.custom,
         allowedExtensions: ['docx'],
       );
-
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
@@ -181,9 +93,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       );
       return;
     }
-
     setState(() => _saving = true);
-
     try {
       final payload = {
         'uploadedFile': base64Encode(_uploadedFileBytes!),
@@ -192,19 +102,15 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         'lastModified': FieldValue.serverTimestamp(),
         'isFinalized': finalize || _isFinalized,
       };
-
       if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
         payload['createdBy'] = _userId;
       }
-
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
       );
-
       if (finalize) {
         Navigator.of(context).pop();
       }
@@ -224,19 +130,18 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       );
       return;
     }
-
     setState(() => _compiling = true);
     try {
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I.D',
+          name: 'Part_I.E',
           bytes: _uploadedFileBytes!,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I.D_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/Part_I.E_${DateTime.now().millisecondsSinceEpoch}.docx';
         await File(path).writeAsBytes(_uploadedFileBytes!);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))
@@ -258,11 +163,10 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Part I.D - Strategic Challenges'),
+        title: const Text('Part I.E - Upload Document'),
         actions: [
           if (_saving)
             const Padding(
@@ -320,7 +224,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
                           Card(
                             elevation: 2,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
+                              borderRadius: BorderRadius.circular(14),
                               side: BorderSide(color: Colors.grey.shade200),
                             ),
                             child: Padding(
@@ -328,31 +232,14 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xff021e84).withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: const Icon(
-                                          Icons.description,
-                                          color: Color(0xff021e84),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      const Text(
-                                        'Strategic Challenges Document',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF2D3748),
-                                        ),
-                                      ),
-                                    ],
+                                  Text(
+                                    'Upload Part I.E Document',
+                                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      color: const Color(0xff021e84),
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: 24),
                                   if (_uploadedFileBytes != null) ...[
                                     Container(
                                       padding: const EdgeInsets.all(12),
@@ -393,9 +280,8 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
                                       backgroundColor: const Color(0xff021e84),
                                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                                       shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      elevation: 2,
                                     ),
                                   ),
                                 ],
@@ -411,4 +297,4 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
             ),
     );
   }
-}
+} 

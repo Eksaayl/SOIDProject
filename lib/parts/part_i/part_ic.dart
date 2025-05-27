@@ -10,7 +10,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Text;
-import 'package:flutter_html/flutter_html.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -222,16 +221,6 @@ class _PartICFormPageState extends State<PartICFormPage> {
     }
   }
 
-  void _showHtmlPreview() {
-    final html = buildPartICPreviewHtml(
-      functionalInterface: _pickedBytes != null ? base64Encode(_pickedBytes!) : '',
-    );
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => HtmlPreviewPageIC(html: html)),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -241,188 +230,229 @@ class _PartICFormPageState extends State<PartICFormPage> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
-        title: const Text('Part I.C - Functional Interface'),
+        title: const Text(
+          'Part I.C - Functional Interface',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF2D3748),
         actions: [
           if (_saving || _compiling)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xff021e84),
+                ),
+              ),
             )
           else ...[
             IconButton(
               icon: const Icon(Icons.save),
               onPressed: _isFinal ? null : () => _saveSection(finalize: false),
               tooltip: 'Save',
+              color: const Color(0xff021e84),
             ),
             IconButton(
               icon: const Icon(Icons.check),
               onPressed: _isFinal ? null : () => _saveSection(finalize: true),
               tooltip: 'Finalize',
+              color: _isFinal ? Colors.grey : const Color(0xff021e84),
             ),
             IconButton(
               icon: const Icon(Icons.file_download),
-              onPressed: _compiling ? null : _compileDocx,
+              onPressed: _compileDocx,
               tooltip: 'Compile DOCX',
-            ),
-            IconButton(
-              icon: const Icon(Icons.remove_red_eye),
-              tooltip: 'Preview as HTML',
-              onPressed: _showHtmlPreview,
+              color: const Color(0xff021e84),
             ),
           ],
         ],
       ),
       body: _isFinal
-        ? Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.lock, size: 48, color: Colors.grey),
-                SizedBox(height: 12),
-                Text(
-                  'This section has been finalized.',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-              ],
-            ),
-          )
-        : Form(
-            key: _formKey,
-            child: Center(
+          ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_pickedBytes != null)
+                  Icon(Icons.lock, size: 48, color: Colors.grey),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'This section has been finalized.',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
+          : Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Container(
-                      width: 400,
-                      height: 240,
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          width: 2,
-                          style: BorderStyle.solid,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Image.memory(
-                        _pickedBytes!,
-                        fit: BoxFit.contain,
-                      ),
-                    )
-                  else
-                    Container(
-                      width: 400,
-                      height: 240,
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          width: 2,
-                          style: BorderStyle.solid,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.1),
+                            spreadRadius: 2,
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.image_outlined, size: 64, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text(
-                            'No image selected',
-                            style: TextStyle(color: Colors.grey),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff021e84).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.info_outline,
+                                  color: Color(0xff021e84),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Instructions',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2D3748),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Please upload the functional interface image. The image should be clear and relevant to the section. You can preview, save, and compile the image into a document.',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Color(0xFF4A5568),
+                              height: 1.5,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    icon: Icon(Icons.upload_file),
-                    label: Text(_pickedBytes == null ? 'Upload Interface' : 'Change Interface'),
-                    onPressed: _isFinal ? null : _pickImage,
-                    style: ElevatedButton.styleFrom(
-                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 24),
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 10),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.1),
+                            spreadRadius: 2,
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff021e84).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.image,
+                                  color: Color(0xff021e84),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Functional Interface',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2D3748),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          if (_pickedBytes != null)
+                            Container(
+                              height: 250,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    spreadRadius: 1,
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.memory(
+                                  _pickedBytes!,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 20),
+                          Center(
+                            child: ElevatedButton.icon(
+                              onPressed: _pickImage,
+                              icon: Icon(
+                                _pickedBytes == null ? Icons.upload_file : Icons.edit,
+                                color: Colors.white,
+                              ),
+                              label: Text(
+                                _pickedBytes == null ? 'Upload Image' : 'Change Image',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xff021e84),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                elevation: 2,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 32),
+                  ],
+                ),
               ),
             ),
-          ),
     );
   }
-}
-
-class HtmlPreviewPageIC extends StatelessWidget {
-  final String html;
-  const HtmlPreviewPageIC({required this.html, Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Preview')),
-      body: SingleChildScrollView(child: Html(data: html)),
-    );
-  }
-}
-
-String buildPartICPreviewHtml({
-  required String functionalInterface,
-}) {
-  return '''
-  <html>
-    <head>
-      <style>
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500&display=swap');
-        body {
-          font-family: 'Poppins', Arial, sans-serif;
-          background: #f6f8fa;
-          margin: 0;
-          padding: 0;
-        }
-        .container {
-          max-width: 800px;
-          margin: 32px auto;
-          background-color: #fff;
-        }
-        .card {
-          background: #fff;
-          border-radius: 14px;
-          box-shadow: 0 2px 12px rgba(2,30,132,0.10);
-          padding: 24px 28px 20px 28px;
-          margin-bottom: 28px;
-          border: 1px solid #e0e4ea;
-        }
-        .section-title {
-          color: #021e84;
-          font-size: 1.1em;
-          margin-bottom: 8px;
-          font-weight: 600;
-          letter-spacing: 0.5px;
-        }
-        .value {
-          margin-bottom: 4px;
-          font-size: 1.05em;
-        }
-        img {
-          max-width: 100%;
-          height: auto;
-          border-radius: 8px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="card">
-          <div class="section-title">Functional Interface</div>
-          <div class="value">
-            <img src="data:image/png;base64,$functionalInterface" alt="Functional Interface" />
-          </div>
-        </div>
-      </div>
-    </body>
-  </html>
-  ''';
 }
