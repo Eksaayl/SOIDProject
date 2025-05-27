@@ -49,7 +49,7 @@ class _Part2State extends State<Part2> {
       final notFinalized = <String>[];
       for (var i = 0; i < sectionRefs.length; i++) {
         final data = sectionRefs[i].data();
-        if (data == null || !(data['finalized'] as bool? ?? false)) {
+        if (data == null || !(data['isFinalized'] as bool? ?? false)) {
           notFinalized.add(['II.A', 'II.B', 'II.C', 'II.D'][i]);
         }
       }

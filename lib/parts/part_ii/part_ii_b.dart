@@ -26,7 +26,7 @@ class _PartIIBState extends State<PartIIB> {
   Uint8List? _docxBytes;
   bool _loading = true;
   bool _saving = false;
-  bool _isFinal = false;
+  bool _isFinalized = false;
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
@@ -51,7 +51,7 @@ class _PartIIBState extends State<PartIIB> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinal = data['finalized'] as bool? ?? false;
+          _isFinalized = data['isFinalized'] as bool? ?? false;
         });
 
         // Load DOCX from Firebase Storage
@@ -144,11 +144,16 @@ class _PartIIBState extends State<PartIIB> {
     setState(() => _saving = true);
     try {
       await _sectionRef.set({
-        'finalized': _isFinal,
+        'sectionTitle': 'Part II.B - Document Upload',
+        'createdBy': _userId,
+        'createdAt': FieldValue.serverTimestamp(),
         'lastModified': FieldValue.serverTimestamp(),
-        'lastModifiedBy': _userId,
+        'isFinalized': _isFinalized,
+        'content': {
+          'docx': _docxBytes != null ? true : false,
+        }
       }, SetOptions(merge: true));
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Content saved successfully'))
       );
@@ -244,7 +249,7 @@ class _PartIIBState extends State<PartIIB> {
           const SizedBox(height: 20),
           Center(
             child: ElevatedButton.icon(
-              onPressed: _isFinal ? null : _pickDocx,
+              onPressed: _isFinalized ? null : _pickDocx,
               icon: Icon(
                 _docxBytes == null ? Icons.upload_file : Icons.edit,
                 color: Colors.white,
@@ -309,7 +314,7 @@ class _PartIIBState extends State<PartIIB> {
               ),
             )
           else ...[
-            if (!_isFinal)
+            if (!_isFinalized)
               IconButton(
                 icon: const Icon(Icons.save),
                 onPressed: _saving ? null : _saveContent,
@@ -318,18 +323,18 @@ class _PartIIBState extends State<PartIIB> {
               ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinal ? null : () {
+              onPressed: _isFinalized ? null : () {
                 if (_docxBytes == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Please upload a document before finalizing'))
                   );
                   return;
                 }
-                setState(() => _isFinal = true);
+                setState(() => _isFinalized = true);
                 _saveContent();
               },
               tooltip: 'Finalize',
-              color: _isFinal ? Colors.grey : const Color(0xff021e84),
+              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
             ),
           ],
         ],

@@ -30,7 +30,7 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
     final bool isSmallerScreen = MediaQuery.of(context).size.width < 450;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF6F3),
+      backgroundColor: Colors.white,
       body: Column(
         children: [
           // Tab Section
@@ -51,7 +51,7 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
                       width: isSmallScreen ? 70 : 120,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        color: selected ? const Color(0xFFFAF6F3) : const Color(0xFFD0C9C0),
+                        color: selected ? Colors.white : const Color(0xFFD0C9C0),
                         borderRadius: const BorderRadius.only(
                           topLeft: Radius.circular(16),
                           topRight: Radius.circular(16),

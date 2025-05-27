@@ -117,7 +117,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
         if (data['functionalInterface'] != null) {
           setState(() {
             _pickedBytes = base64Decode(data['functionalInterface'] as String);
-            _isFinal = data['finalized'] as bool? ?? false;
+            _isFinal = data['isFinalized'] as bool? ?? false;
           });
         }
       }

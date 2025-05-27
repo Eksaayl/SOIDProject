@@ -82,7 +82,7 @@ class _PartIIDState extends State<PartIID> {
   bool _loading = true;
   bool _saving = false;
   bool _compiling = false;
-  bool _isFinal = false;
+  bool _isFinalized = false;
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
@@ -107,7 +107,7 @@ class _PartIIDState extends State<PartIID> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinal = data['finalized'] as bool? ?? false;
+          _isFinalized = data['isFinalized'] as bool? ?? false;
         });
 
         // Load images from Firebase Storage
@@ -207,35 +207,47 @@ class _PartIIDState extends State<PartIID> {
 
     setState(() => _saving = true);
     try {
-      // Generate DOCX if all images are present
-      if (_nlcImageBytes != null && _pnlImageBytes != null) {
-        final bytes = await generateDocxWithImages(
-          images: {
-            'NLC': _nlcImageBytes!,
-            'PNL': _pnlImageBytes!,
-          },
-        );
+      // If finalizing, generate new DOCX
+      if (_isFinalized) {
+        setState(() => _compiling = true);
+        try {
+          final bytes = await generateDocxWithImages(
+            images: {
+              'NLC': _nlcImageBytes!,
+              'PNL': _pnlImageBytes!,
+            },
+          );
 
-        // Upload DOCX to Firebase Storage
-        final docxRef = _storage.ref().child('${widget.documentId}/II.D/document.docx');
-        await docxRef.putData(bytes);
+          // Save to Firebase Storage
+          final docxRef = _storage.ref().child('${widget.documentId}/II.D/document.docx');
+          await docxRef.putData(bytes);
 
-        // Save metadata to Firestore
-        await _sectionRef.set({
-          'finalized': _isFinal,
-          'lastModified': FieldValue.serverTimestamp(),
-          'lastModifiedBy': _userId,
-          'docxPath': '${widget.documentId}/II.D/document.docx',
-        }, SetOptions(merge: true));
-      } else {
-        // If not all images are present, just save the metadata
-        await _sectionRef.set({
-          'finalized': _isFinal,
-          'lastModified': FieldValue.serverTimestamp(),
-          'lastModifiedBy': _userId,
-        }, SetOptions(merge: true));
+          // Save to Firestore
+          await _sectionRef.set({
+            'docxBytes': base64Encode(bytes),
+            'lastModified': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error generating DOCX: $e'))
+          );
+        } finally {
+          setState(() => _compiling = false);
+        }
       }
-      
+
+      await _sectionRef.set({
+        'sectionTitle': 'Part II.D - Image Uploads',
+        'createdBy': _userId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastModified': FieldValue.serverTimestamp(),
+        'isFinalized': _isFinalized,
+        'content': {
+          'nlc': _nlcImageBytes != null ? true : false,
+          'pnl': _pnlImageBytes != null ? true : false,
+        }
+      }, SetOptions(merge: true));
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Content saved successfully'))
       );
@@ -368,7 +380,7 @@ class _PartIIDState extends State<PartIID> {
                 ),
               ),
             )
-          else if (!_isFinal)
+          else if (!_isFinalized)
             Center(
               child: ElevatedButton.icon(
                 onPressed: () => _pickImage(type),
@@ -397,9 +409,9 @@ class _PartIIDState extends State<PartIID> {
                 ),
               ),
             ),
-          if (bytes != null && !_isFinal)
+          if (bytes != null && !_isFinalized)
             const SizedBox(height: 20),
-          if (bytes != null && !_isFinal)
+          if (bytes != null && !_isFinalized)
             Center(
               child: ElevatedButton.icon(
                 onPressed: () => _pickImage(type),
@@ -467,7 +479,7 @@ class _PartIIDState extends State<PartIID> {
               ),
             )
           else ...[
-            if (!_isFinal)
+            if (!_isFinalized)
               IconButton(
                 icon: const Icon(Icons.save),
                 onPressed: _saving ? null : _saveContent,
@@ -476,18 +488,18 @@ class _PartIIDState extends State<PartIID> {
               ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinal ? null : () {
+              onPressed: _isFinalized ? null : () {
                 if (_nlcImageBytes == null || _pnlImageBytes == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Please upload both images before finalizing'))
                   );
                   return;
                 }
-                setState(() => _isFinal = true);
+                setState(() => _isFinalized = true);
                 _saveContent();
               },
               tooltip: 'Finalize',
-              color: _isFinal ? Colors.grey : const Color(0xff021e84),
+              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
             ),
             IconButton(
               icon: const Icon(Icons.file_download),

@@ -125,7 +125,7 @@ class _PartIIAState extends State<PartIIA> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinal = data['finalized'] as bool? ?? false;
+          _isFinal = data['isFinalized'] as bool? ?? false;
         });
 
         // Load images from Firebase Storage
@@ -240,36 +240,49 @@ class _PartIIAState extends State<PartIIA> {
 
     setState(() => _saving = true);
     try {
-      // Generate DOCX if all images are present
-      if (_isiBytes != null && _isiiBytes != null && _isiiiBytes != null) {
-        final bytes = await generateDocxWithImages(
-          images: {
-            'ISI': _isiBytes!,
-            'ISII': _isiiBytes!,
-            'ISIII': _isiiiBytes!,
-          },
-        );
+      // If finalizing, generate new DOCX
+      if (_isFinal) {
+        setState(() => _compiling = true);
+        try {
+          final bytes = await generateDocxWithImages(
+            images: {
+              'ISI': _isiBytes!,
+              'ISII': _isiiBytes!,
+              'ISIII': _isiiiBytes!,
+            },
+          );
 
-        // Upload DOCX to Firebase Storage
-        final docxRef = _storage.ref().child('${widget.documentId}/II.A/document.docx');
-        await docxRef.putData(bytes);
+          // Save to Firebase Storage
+          final docxRef = _storage.ref().child('${widget.documentId}/II.A/document.docx');
+          await docxRef.putData(bytes);
 
-        // Save metadata to Firestore
-        await _sectionRef.set({
-          'finalized': _isFinal,
-          'lastModified': FieldValue.serverTimestamp(),
-          'lastModifiedBy': _userId,
-          'docxPath': '${widget.documentId}/II.A/document.docx',
-        }, SetOptions(merge: true));
-      } else {
-        // If not all images are present, just save the metadata
-        await _sectionRef.set({
-          'finalized': _isFinal,
-          'lastModified': FieldValue.serverTimestamp(),
-          'lastModifiedBy': _userId,
-        }, SetOptions(merge: true));
+          // Save to Firestore
+          await _sectionRef.set({
+            'docxBytes': base64Encode(bytes),
+            'lastModified': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error generating DOCX: $e'))
+          );
+        } finally {
+          setState(() => _compiling = false);
+        }
       }
-      
+
+      await _sectionRef.set({
+        'sectionTitle': 'Part II.A - Information Security Policy',
+        'createdBy': _userId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastModified': FieldValue.serverTimestamp(),
+        'isFinalized': _isFinal,
+        'content': {
+          'isi': _isiBytes != null ? true : false,
+          'isii': _isiiBytes != null ? true : false,
+          'isiii': _isiiiBytes != null ? true : false,
+        }
+      }, SetOptions(merge: true));
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Content saved successfully'))
       );
