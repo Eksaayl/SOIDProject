@@ -10,7 +10,6 @@ class HistoryPage extends StatelessWidget {
     final data = section.data() as Map<String, dynamic>;
     final currentStatus = data['isFinalized'] as bool? ?? false;
     
-    // Only allow unfinalizing (true -> false), not finalizing (false -> true)
     if (!currentStatus) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sections can only be finalized from their respective pages'))
@@ -22,6 +21,13 @@ class HistoryPage extends StatelessWidget {
       await section.reference.update({
         'isFinalized': false,
         'lastModified': FieldValue.serverTimestamp(),
+      });
+      
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'title': 'Section Unfinalized',
+        'body': 'The section "${data['sectionTitle'] ?? section.id}" has been unfinalized.',
+        'readBy': {},
+        'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -161,7 +167,7 @@ class HistoryPage extends StatelessWidget {
                       ),
                       child: Theme(
                         data: Theme.of(context).copyWith(
-                          dividerColor: Colors.transparent, // Remove black line
+                          dividerColor: Colors.transparent, 
                           splashColor: Colors.transparent,
                           highlightColor: Colors.transparent,
                           unselectedWidgetColor: const Color(0xff021e84),
@@ -172,7 +178,7 @@ class HistoryPage extends StatelessWidget {
                         child: ExpansionTile(
                           leading: Icon(Icons.folder_open, color: const Color(0xff021e84)),
                           title: Text(
-                            data['sectionTitle'] ?? docSnap.id,
+                            docSnap.id,
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
@@ -213,7 +219,7 @@ class HistoryPage extends StatelessWidget {
                                 Chip(
                                   avatar: const Icon(Icons.person, size: 20, color: Color(0xff021e84)),
                                   label: Text(
-                                    data['createdBy'] ?? '—',
+                                    data['modifiedBy'] ?? data['createdBy'] ?? '—',
                                     style: const TextStyle(fontSize: 13, color: Color(0xFF4A5568)),
                                   ),
                                   backgroundColor: const Color(0xff021e84).withOpacity(0.1),
@@ -221,7 +227,7 @@ class HistoryPage extends StatelessWidget {
                                 Chip(
                                   avatar: const Icon(Icons.calendar_today, size: 20, color: Color(0xff021e84)),
                                   label: Text(
-                                    'Created: ${formatTimestamp(data['createdAt'])}',
+                                    'Modified: 	${formatTimestamp(data['lastModified'])}',
                                     style: const TextStyle(fontSize: 13, color: Color(0xFF4A5568)),
                                   ),
                                   backgroundColor: const Color(0xff021e84).withOpacity(0.1),

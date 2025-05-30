@@ -1,5 +1,3 @@
-// lib/startup.dart
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'state/selection_model.dart';

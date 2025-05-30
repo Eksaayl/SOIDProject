@@ -54,7 +54,6 @@ class _PartIICState extends State<PartIIC> {
           _isFinalized = data['isFinalized'] as bool? ?? false;
         });
 
-        // Load DOCX from Firebase Storage
         try {
           final docxRef = _storage.ref().child('${widget.documentId}/II.C/document.docx');
           final docxBytes = await docxRef.getData();
@@ -86,11 +85,9 @@ class _PartIICState extends State<PartIIC> {
       if (result != null) {
         final bytes = result.files.first.bytes;
         if (bytes != null) {
-          // Upload to Firebase Storage
           final docxRef = _storage.ref().child('${widget.documentId}/II.C/document.docx');
           await docxRef.putData(bytes);
           
-          // Save to Firestore
           await _sectionRef.set({
             'docxBytes': base64Encode(bytes),
             'lastModified': FieldValue.serverTimestamp(),
@@ -154,8 +151,18 @@ class _PartIICState extends State<PartIIC> {
         }
       }, SetOptions(merge: true));
 
+      final user = FirebaseAuth.instance.currentUser;
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+      final username = userDoc.data()?['username'] ?? user.uid;
+      await FirebaseFirestore.instance.collection('notifications').add({
+        'title': 'Part II.C Finalized',
+        'body': 'Part II.C has been finalized by $username',
+        'readBy': {},
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Content saved successfully'))
+        const SnackBar(content: Text('Finalized'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -294,7 +301,7 @@ class _PartIICState extends State<PartIIC> {
       backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
         title: const Text(
-          'Part II.C - Document Upload',
+          'Part II.C - Databases Required',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -339,73 +346,89 @@ class _PartIICState extends State<PartIIC> {
           ],
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.1),
-                      spreadRadius: 2,
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xff021e84).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.info_outline,
-                            color: Color(0xff021e84),
-                          ),
+      body: _isFinalized
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lock, size: 48, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text(
+                    'Part II.C - Databases Required has been finalized.',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
+          : SingleChildScrollView(
+              child: Form(
+                key: _formKey,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        const Text(
-                          'Instructions',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2D3748),
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xff021e84).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.info_outline,
+                                    color: Color(0xff021e84),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Instructions',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3748),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Please upload a DOCX document for Part IIC. The document should contain all necessary information for this section. You can preview, save, and download the document.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Color(0xFF4A5568),
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Please upload a DOCX document for Part IIC. The document should contain all necessary information for this section. You can preview, save, and download the document.',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFF4A5568),
-                        height: 1.5,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+                      _buildDocxUploadSection(),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              _buildDocxUploadSection(),
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 } 

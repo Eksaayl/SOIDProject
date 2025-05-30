@@ -33,7 +33,6 @@ class _LandingState extends State<Landing> {
         .collection('users')
         .doc(uid)
         .snapshots();
-    // Listen for role changes
     _userDocStream.listen((snap) {
       if (!snap.exists) return;
       final role = (snap.data()!['role'] as String?)?.toLowerCase() ?? '';
@@ -63,10 +62,8 @@ class _LandingState extends State<Landing> {
   Widget _buildSidebar(bool isDrawer) {
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
-      if (_isAdmin)
-        _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      _NavItemData(Icons.history, 'History', HistoryPage(documentId: '',)),
-      _NavItemData(Icons.apps, 'Applications', const Center(child: Text('Applications Page'))),
+      if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
+      if (_isAdmin) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
       _NavItemData(Icons.shopping_basket, 'Orders', const Center(child: Text('Orders Page'))),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
@@ -145,10 +142,8 @@ class _LandingState extends State<Landing> {
 
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
-      if (_isAdmin)
-        _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
-      _NavItemData(Icons.apps, 'Applications', const Center(child: Text('Applications Page'))),
+      if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
+      if (_isAdmin) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
       _NavItemData(Icons.shopping_basket, 'Orders', const Center(child: Text('Orders Page'))),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];

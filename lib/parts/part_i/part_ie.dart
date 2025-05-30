@@ -7,6 +7,7 @@ import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class PartIEFormPage extends StatefulWidget {
   final String documentId;
@@ -19,6 +20,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
   final _formKey = GlobalKey<FormState>();
   Uint8List? _uploadedFileBytes;
   String? _fileName;
+  String? _fileUrl;
   bool _loading = true;
   bool _saving = false;
   bool _isFinalized = false;
@@ -26,6 +28,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
+  final _storage = FirebaseStorage.instance;
   String get _userId =>
       _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
 
@@ -48,11 +51,21 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         final data = doc.data() as Map<String, dynamic>;
         setState(() {
           _isFinalized = data['isFinalized'] ?? false;
-          if (data['uploadedFile'] != null) {
-            _uploadedFileBytes = base64Decode(data['uploadedFile'] as String);
-            _fileName = data['fileName'] as String?;
-          }
+          _fileName = data['fileName'] as String?;
+          _fileUrl = data['fileUrl'] as String?;
         });
+
+        try {
+          final docxRef = _storage.ref().child('${widget.documentId}/I.E/document.docx');
+          final docxBytes = await docxRef.getData();
+          if (docxBytes != null) {
+            setState(() {
+              _uploadedFileBytes = docxBytes;
+            });
+          }
+        } catch (e) {
+          print('Error loading DOCX: $e');
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -69,57 +82,32 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         type: FileType.custom,
         allowedExtensions: ['docx'],
       );
+
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
+          final docxRef = _storage.ref().child('${widget.documentId}/I.E/document.docx');
+          await docxRef.putData(file.bytes!);
+          
+          await _sectionRef.set({
+            'docxBytes': base64Encode(file.bytes!),
+            'lastModified': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          
           setState(() {
             _uploadedFileBytes = file.bytes;
             _fileName = file.name;
           });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Document uploaded and saved successfully'))
+          );
         }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('File pick error: $e'))
       );
-    }
-  }
-
-  Future<void> _save({bool finalize = false}) async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_uploadedFileBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please upload a document'))
-      );
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      final payload = {
-        'uploadedFile': base64Encode(_uploadedFileBytes!),
-        'fileName': _fileName,
-        'modifiedBy': _userId,
-        'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': finalize || _isFinalized,
-      };
-      if (!_isFinalized) {
-        payload['createdAt'] = FieldValue.serverTimestamp();
-        payload['createdBy'] = _userId;
-      }
-      await _sectionRef.set(payload, SetOptions(merge: true));
-      setState(() => _isFinalized = finalize);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
-      );
-      if (finalize) {
-        Navigator.of(context).pop();
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Save error: $e'))
-      );
-    } finally {
-      setState(() => _saving = false);
     }
   }
 
@@ -130,6 +118,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
       );
       return;
     }
+
     setState(() => _compiling = true);
     try {
       if (kIsWeb) {
@@ -156,6 +145,57 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
     }
   }
 
+  Future<void> _save({bool finalize = false}) async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_uploadedFileBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please upload a document'))
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final payload = {
+        'fileName': _fileName,
+        'modifiedBy': _userId,
+        'lastModified': FieldValue.serverTimestamp(),
+        'isFinalized': finalize || _isFinalized,
+      };
+      if (!_isFinalized) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        payload['createdBy'] = _userId;
+      }
+      await _sectionRef.set(payload, SetOptions(merge: true));
+      setState(() => _isFinalized = finalize);
+
+      if (finalize) {
+        final user = FirebaseAuth.instance.currentUser;
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+        final username = userDoc.data()?['username'] ?? user.uid;
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'title': 'Part I.E Finalized',
+          'body': 'Part I.E has been finalized by $username',
+          'readBy': {},
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
+      );
+      if (finalize) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save error: $e'))
+      );
+    } finally {
+      setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -164,35 +204,42 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
       );
     }
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
-        title: const Text('Part I.E - Upload Document'),
+        title: const Text(
+          'Part I.E - Strategic Concerns for ICT Use',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF2D3748),
         actions: [
           if (_saving)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xff021e84),
+                ),
+              ),
             )
           else ...[
-            IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: _isFinalized ? null : () => _save(),
-            ),
+            if (!_isFinalized)
+              IconButton(
+                icon: const Icon(Icons.save),
+                onPressed: _saving ? null : () => _save(),
+                tooltip: 'Save',
+                color: const Color(0xff021e84),
+              ),
             IconButton(
               icon: const Icon(Icons.check),
-              tooltip: 'Finalize',
               onPressed: _isFinalized ? null : () => _save(finalize: true),
+              tooltip: 'Finalize',
+              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
             ),
-            if (_compiling)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-              )
-            else
-              IconButton(
-                icon: const Icon(Icons.file_download),
-                onPressed: _compileDocx,
-              ),
           ]
         ],
       ),
@@ -204,7 +251,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
                   Icon(Icons.lock, size: 48, color: Colors.grey),
                   SizedBox(height: 12),
                   Text(
-                    'This section has been finalized.',
+                    'Part I.E - Strategic Concerns for ICT Use has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
@@ -213,84 +260,178 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
           : SingleChildScrollView(
               child: Form(
                 key: _formKey,
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: 600),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Card(
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              side: BorderSide(color: Colors.grey.shade200),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(24.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Upload Part I.E Document',
-                                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                      color: const Color(0xff021e84),
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xff021e84).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
-                                  const SizedBox(height: 24),
-                                  if (_uploadedFileBytes != null) ...[
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade50,
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.grey.shade200),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.description, color: Colors.grey.shade700),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Text(
-                                              _fileName ?? 'Document',
-                                              style: TextStyle(
-                                                color: Colors.grey.shade700,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  ElevatedButton.icon(
-                                    onPressed: _pickFile,
-                                    icon: Icon(
-                                      _uploadedFileBytes == null ? Icons.upload_file : Icons.edit,
-                                      color: Colors.white,
-                                    ),
-                                    label: Text(
-                                      _uploadedFileBytes == null ? 'Upload Document' : 'Change Document',
-                                      style: const TextStyle(color: Colors.white),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xff021e84),
-                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
+                                  child: const Icon(
+                                    Icons.info_outline,
+                                    color: Color(0xff021e84),
                                   ),
-                                ],
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Instructions',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3748),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Please upload a DOCX document for Part I.E. The document should contain all necessary information for this section. You can preview, save, and download the document.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Color(0xFF4A5568),
+                                height: 1.5,
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 24),
+                      Container(
+                        margin: const EdgeInsets.symmetric(vertical: 10),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xff021e84).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.description,
+                                    color: Color(0xff021e84),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Document Upload',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3748),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            if (_uploadedFileBytes != null)
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff021e84).withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: const Color(0xff021e84).withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.insert_drive_file,
+                                      color: Color(0xff021e84),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        _fileName ?? 'Document',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          color: Color(0xFF2D3748),
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.download),
+                                      onPressed: _compileDocx,
+                                      color: const Color(0xff021e84),
+                                      tooltip: 'Download Document',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            const SizedBox(height: 20),
+                            Center(
+                              child: ElevatedButton.icon(
+                                onPressed: _isFinalized ? null : _pickFile,
+                                icon: Icon(
+                                  _uploadedFileBytes == null ? Icons.upload_file : Icons.edit,
+                                  color: Colors.white,
+                                ),
+                                label: Text(
+                                  _uploadedFileBytes == null ? 'Upload Document' : 'Change Document',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xff021e84),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  elevation: 2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                    ],
                   ),
                 ),
               ),

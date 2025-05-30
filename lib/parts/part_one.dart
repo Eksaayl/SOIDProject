@@ -16,6 +16,8 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:file_picker/file_picker.dart';
 import '../services/document_service.dart';
 import 'package:http/http.dart' as http;
+import 'package:firebase_storage/firebase_storage.dart';
+import '../config.dart';
 
 Future<Uint8List> generateDocxWithTextAndImage({
   required String assetPath,
@@ -235,6 +237,83 @@ class _Part1State extends State<Part1> {
     }
   }
 
+  Future<void> mergeCompiledAndUploadsAndDownload(BuildContext context, String documentId) async {
+    try {
+      final storage = FirebaseStorage.instance;
+      setState(() => _isCompiling = true);
+
+      // Get all Part I documents from storage
+      final iaBytes = await storage.ref().child('$documentId/I.A/document.docx').getData();
+      final ibBytes = await storage.ref().child('$documentId/I.B/document.docx').getData();
+      final icBytes = await storage.ref().child('$documentId/I.C/document.docx').getData();
+      final idBytes = await storage.ref().child('$documentId/I.D/document.docx').getData();
+      final ieBytes = await storage.ref().child('$documentId/I.E/document.docx').getData();
+
+      if (iaBytes == null || ibBytes == null || icBytes == null || idBytes == null || ieBytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('One or more Part I documents are missing. Please ensure all parts are finalized.'))
+        );
+        return;
+      }
+
+      // Create multipart request for merging
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${Config.serverUrl}/merge-documents-part-i-all'),
+      );
+
+      // Add all documents
+      request.files.add(http.MultipartFile.fromBytes('part_ia', iaBytes, filename: 'part_ia.docx'));
+      request.files.add(http.MultipartFile.fromBytes('part_ib', ibBytes, filename: 'part_ib.docx'));
+      request.files.add(http.MultipartFile.fromBytes('part_ic', icBytes, filename: 'part_ic.docx'));
+      request.files.add(http.MultipartFile.fromBytes('part_id', idBytes, filename: 'part_id.docx'));
+      request.files.add(http.MultipartFile.fromBytes('part_ie', ieBytes, filename: 'part_ie.docx'));
+
+      // Send merge request
+      var response = await request.send();
+      if (response.statusCode != 200) {
+        final error = await response.stream.bytesToString();
+        throw Exception('Failed to merge documents: ${response.statusCode} - $error');
+      }
+
+      // Get merged document
+      final responseBytes = await response.stream.toBytes();
+
+      // Save the merged document to storage
+      final mergedRef = storage.ref().child('$documentId/part_i_merged.docx');
+      await mergedRef.putData(responseBytes);
+
+      // Update Firestore with merged document path
+      await FirebaseFirestore.instance.collection('issp_documents').doc(documentId).update({
+        'partIMergedPath': '$documentId/part_i_merged.docx',
+        'lastModified': FieldValue.serverTimestamp(),
+      });
+
+      // Download the merged document
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: 'Part_I_Merged_${DateTime.now().millisecondsSinceEpoch}.docx',
+          bytes: responseBytes,
+          mimeType: MimeType.microsoftWord,
+        );
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/Part_I_Merged_${DateTime.now().millisecondsSinceEpoch}.docx');
+        await file.writeAsBytes(responseBytes);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Documents merged successfully'))
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error merging documents: $e'))
+      );
+    } finally {
+      setState(() => _isCompiling = false);
+    }
+  }
+
   Widget _pill(String label, IconData icon, int idx) {
     final sel = _selectedIndex == idx;
     return ElevatedButton.icon(
@@ -365,40 +444,4 @@ Future<Map<String, dynamic>> pickTemplate() async {
     }
   }
   throw Exception('No template selected');
-}
-
-Future<void> mergeCompiledAndUploadsAndDownload(BuildContext context, String documentId) async {
-  final documentService = DocumentService();
-  final compiledBytes = await generateCompiledDocx(documentId);
-  final idBytes = await documentService.fetchUploadedFileBytes(documentId, 'I.D');
-  final ieBytes = await documentService.fetchUploadedFileBytes(documentId, 'I.E');
-  if (compiledBytes == null || idBytes == null || ieBytes == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Compiled or uploaded files are missing.')),
-    );
-    return;
-  }
-  var request = http.MultipartRequest(
-    'POST',
-    Uri.parse('http://localhost:8000/merge-documents-part-i'),
-  );
-  request.files.add(http.MultipartFile.fromBytes('compiled', compiledBytes, filename: 'compiled.docx'));
-  request.files.add(http.MultipartFile.fromBytes('part_id', idBytes, filename: 'part_id.docx'));
-  request.files.add(http.MultipartFile.fromBytes('part_ie', ieBytes, filename: 'part_ie.docx'));
-  var response = await request.send();
-  var responseData = await response.stream.toBytes();
-  if (response.statusCode == 200) {
-    await FileSaver.instance.saveFile(
-      name: 'Part_I_Merged_${DateTime.now().millisecondsSinceEpoch}.docx',
-      bytes: responseData,
-      mimeType: MimeType.microsoftWord,
-    );
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Merged document downloaded!')),
-    );
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Failed to merge documents: ${response.statusCode}')),
-    );
-  }
 }

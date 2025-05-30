@@ -10,6 +10,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Text;
+import 'package:firebase_storage/firebase_storage.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -26,11 +27,9 @@ Future<Uint8List> generateDocxWithImage({
   final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
   final archive = ZipDecoder().decodeBytes(bytes);
 
-  // Add image to media folder
   const imagePath = 'word/media/image1.png';
   archive.addFile(ArchiveFile(imagePath, imageBytes.length, imageBytes));
 
-  // Add relationship
   final relsFile = archive.firstWhere((f) => f.name == 'word/_rels/document.xml.rels');
   var relsXml = utf8.decode(relsFile.content as List<int>);
   const rid = 'rId1000';
@@ -42,7 +41,6 @@ Future<Uint8List> generateDocxWithImage({
     archive.addFile(ArchiveFile('word/_rels/document.xml.rels', utf8.encode(relsXml).length, utf8.encode(relsXml)));
   }
 
-  // Replace placeholder with image
   final doc = archive.firstWhere((f) => f.name == 'word/document.xml');
   var docXml = utf8.decode(doc.content as List<int>);
   final drawingXml = '''
@@ -92,9 +90,11 @@ class _PartICFormPageState extends State<PartICFormPage> {
   bool _saving = false;
   bool _compiling = false;
   bool _isFinal = false;
+  String? _fileUrl;
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
+  final _storage = FirebaseStorage.instance;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
 
   @override
@@ -114,11 +114,21 @@ class _PartICFormPageState extends State<PartICFormPage> {
       final doc = await _sectionRef.get();
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
-        if (data['functionalInterface'] != null) {
-          setState(() {
-            _pickedBytes = base64Decode(data['functionalInterface'] as String);
-            _isFinal = data['isFinalized'] as bool? ?? false;
-          });
+        setState(() {
+          _isFinal = data['isFinalized'] as bool? ?? false;
+          _fileUrl = data['fileUrl'] as String?;
+        });
+
+        try {
+          final imageRef = _storage.ref().child('${widget.documentId}/I.C/functionalInterface.png');
+          final imageBytes = await imageRef.getData();
+          if (imageBytes != null) {
+            setState(() {
+              _pickedBytes = imageBytes;
+            });
+          }
+        } catch (e) {
+          print('Error loading image: $e');
         }
       }
     } catch (e) {
@@ -155,16 +165,46 @@ class _PartICFormPageState extends State<PartICFormPage> {
 
     setState(() => _saving = true);
     try {
+      final imageRef = _storage.ref().child('${widget.documentId}/I.C/functionalInterface.png');
+      await imageRef.putData(_pickedBytes!);
+
+      final docxBytes = await generateDocxWithImage(
+        assetPath: 'assets/templates_c.docx',
+        placeholder: '\${functionalInterface}',
+        imageBytes: _pickedBytes!,
+      );
+
+      final docxRef = _storage.ref().child('${widget.documentId}/I.C/document.docx');
+      await docxRef.putData(docxBytes);
+      final docxUrl = await docxRef.getDownloadURL();
+
       final payload = {
-        'functionalInterface': base64Encode(_pickedBytes!),
+        'fileUrl': docxUrl,
         'lastModified': FieldValue.serverTimestamp(),
         'lastModifiedBy': _userId,
-        'finalized': finalize,
+        'isFinalized': finalize,
       };
+
+      if (!_isFinal) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        payload['createdBy'] = _userId;
+      }
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinal = finalize);
-      
+
+      if (finalize) {
+        final user = FirebaseAuth.instance.currentUser;
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+        final username = userDoc.data()?['username'] ?? user.uid;
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'title': 'Part I.C Finalized',
+          'body': 'Part I.C has been finalized by $username',
+          'readBy': {},
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
       );
@@ -233,7 +273,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
       backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
         title: const Text(
-          'Part I.C - Functional Interface',
+          'Part I.C - The Department/Agency and its Environment (Functional Interface Chart)',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -280,9 +320,9 @@ class _PartICFormPageState extends State<PartICFormPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.lock, size: 48, color: Colors.grey),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'This section has been finalized.',
+                  SizedBox(height: 12),
+                  Text(
+                    'Part I.C - The Department/Agency and its Environment (Functional Interface Chart) has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],

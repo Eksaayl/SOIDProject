@@ -38,7 +38,6 @@ class _Part2State extends State<Part2> {
       final firestore = FirebaseFirestore.instance;
       setState(() => _isCompiling = true);
 
-      // Check if all sections are finalized
       final sectionRefs = await Future.wait([
         firestore.collection('issp_documents').doc(documentId).collection('sections').doc('II.A').get(),
         firestore.collection('issp_documents').doc(documentId).collection('sections').doc('II.B').get(),
@@ -61,7 +60,6 @@ class _Part2State extends State<Part2> {
         return;
       }
 
-      // Get all Part II documents from storage
       final ii_a_bytes = await storage.ref().child('$documentId/II.A/document.docx').getData();
       final ii_b_bytes = await storage.ref().child('$documentId/II.B/document.docx').getData();
       final ii_c_bytes = await storage.ref().child('$documentId/II.C/document.docx').getData();
@@ -74,39 +72,32 @@ class _Part2State extends State<Part2> {
         return;
       }
 
-      // Create multipart request for merging
       final merge_request = http.MultipartRequest(
         'POST',
         Uri.parse('${Config.serverUrl}/merge-documents-part-ii'),
       );
 
-      // Add all documents
       merge_request.files.add(http.MultipartFile.fromBytes('part_ii_a', ii_a_bytes, filename: 'part_ii_a.docx'));
       merge_request.files.add(http.MultipartFile.fromBytes('part_ii_b', ii_b_bytes, filename: 'part_ii_b.docx'));
       merge_request.files.add(http.MultipartFile.fromBytes('part_ii_c', ii_c_bytes, filename: 'part_ii_c.docx'));
       merge_request.files.add(http.MultipartFile.fromBytes('part_ii_d', ii_d_bytes, filename: 'part_ii_d.docx'));
 
-      // Send merge request
       final merge_response = await merge_request.send();
       if (merge_response.statusCode != 200) {
         final error = await merge_response.stream.bytesToString();
         throw Exception('Failed to merge documents: ${merge_response.statusCode} - $error');
       }
 
-      // Get merged document
       final responseBytes = await merge_response.stream.toBytes();
 
-      // Save the merged document to storage
       final mergedRef = storage.ref().child('$documentId/part_ii_merged.docx');
       await mergedRef.putData(responseBytes);
 
-      // Update Firestore with merged document path
       await firestore.collection('issp_documents').doc(documentId).update({
         'partIIMergedPath': '$documentId/part_ii_merged.docx',
         'lastModified': FieldValue.serverTimestamp(),
       });
 
-      // Download the merged document
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
           name: 'Part_II_Merged_${DateTime.now().millisecondsSinceEpoch}.docx',

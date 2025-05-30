@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -62,7 +63,6 @@ class PartIAFormPage extends StatefulWidget {
 class _PartIAFormPageState extends State<PartIAFormPage> {
   final _formKey = GlobalKey<FormState>();
 
-  // List to manage multiple function editors
   final List<QuillController> functionControllers = [];
   
   late TextEditingController docNameCtrl;
@@ -79,7 +79,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
   bool _isFinal = false;
 
   late DocumentReference _sectionRef;
-  String get _userId => 'temporary_user'; // Temporary user ID
+  String get _userId => 'temporary_user';
 
   void _addNewFunctionEditor() {
     functionControllers.add(QuillController.basic());
@@ -105,7 +105,6 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     pillar2Ctrl = TextEditingController();
     pillar3Ctrl = TextEditingController();
 
-    // Initialize with one empty function editor
     _addNewFunctionEditor();
 
     _sectionRef = FirebaseFirestore.instance
@@ -125,7 +124,6 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
       docNameCtrl.text = data['documentName'] ?? '';
       legalBasisCtrl.text = data['legalBasis'] ?? '';
       
-      // Clear existing controllers
       for (var controller in functionControllers) {
         controller.dispose();
       }
@@ -142,11 +140,9 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
             functionControllers.add(controller);
           }
         } catch (e) {
-          // If loading fails, start with one empty editor
           _addNewFunctionEditor();
         }
       } else {
-        // If no data, start with one empty editor
         _addNewFunctionEditor();
       }
 
@@ -167,34 +163,80 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
-    final payload = {
-      'documentName': docNameCtrl.text.trim(),
-      'legalBasis': legalBasisCtrl.text.trim(),
-      'functions': jsonEncode(
-        functionControllers.map((ctrl) => ctrl.document.toDelta().toJson()).toList()
-      ),
-      'visionStatement': visionCtrl.text.trim(),
-      'missionStatement': missionCtrl.text.trim(),
-      'pillar1': pillar1Ctrl.text.trim(),
-      'pillar2': pillar2Ctrl.text.trim(),
-      'pillar3': pillar3Ctrl.text.trim(),
-      'modifiedBy': _userId,
-      'lastModified': FieldValue.serverTimestamp(),
-      'isFinalized': finalize || _isFinal,
-    };
-
-    if (!_isFinal) {
-      payload['createdAt'] = FieldValue.serverTimestamp();
-      payload['createdBy'] = _userId;
-    }
-
     try {
+      final sb = StringBuffer();
+      
+      for (var controller in functionControllers) {
+        final text = controller.document.toPlainText().trim();
+        if (text.isNotEmpty) {
+          sb.writeln('• $text');
+          sb.writeln(); 
+        }
+      }
+      
+      final replacements = {
+        'documentName': docNameCtrl.text.trim(),
+        'legalBasis': legalBasisCtrl.text.trim(),
+        'functions': sb.toString().trim(),
+        'visionStatement': visionCtrl.text.trim(),
+        'missionStatement': missionCtrl.text.trim(),
+        'pillar1': pillar1Ctrl.text.trim(),
+        'pillar2': pillar2Ctrl.text.trim(),
+        'pillar3': pillar3Ctrl.text.trim(),
+      };
+
+      final docxBytes = await generateDocxBySearchReplace(
+        assetPath: 'assets/templates.docx',
+        replacements: replacements,
+      );
+
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('${widget.documentId}/I.A/document.docx');
+      await docxRef.putData(docxBytes);
+      final docxUrl = await docxRef.getDownloadURL();
+
+      final payload = {
+        ...replacements,
+        'functions': jsonEncode(
+          functionControllers.map((ctrl) => ctrl.document.toDelta().toJson()).toList()
+        ),
+        'fileUrl': docxUrl,
+        'modifiedBy': _userId,
+        'lastModified': FieldValue.serverTimestamp(),
+        'isFinalized': finalize || _isFinal,
+      };
+
+      if (!_isFinal) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        payload['createdBy'] = _userId;
+      }
+
       await _sectionRef.set(payload, SetOptions(merge: true));
-      setState(() => _isFinal = true);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved')));
-      Navigator.of(context).pop();
+      setState(() => _isFinal = finalize);
+      
+      if (finalize) {
+        final user = FirebaseAuth.instance.currentUser;
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+        final username = userDoc.data()?['username'] ?? user.uid;
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'title': 'Part I.A Finalized',
+          'body': 'Part I.A has been finalized by $username',
+          'readBy': {},
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
+      );
+      
+      if (finalize) {
+        Navigator.of(context).pop();
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save error: $e'))
+      );
     } finally {
       setState(() => _saving = false);
     }
@@ -204,15 +246,13 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     setState(() => _compiling = true);
 
     try {
-      // Create formatted text with bullet points
       final sb = StringBuffer();
       
       for (var controller in functionControllers) {
         final text = controller.document.toPlainText().trim();
         if (text.isNotEmpty) {
           sb.writeln('• $text');
-          sb.writeln(); // Add an extra line break after each bullet point
-        }
+          sb.writeln(); 
       }
       
       final map = {
@@ -226,13 +266,11 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
         'pillar3': pillar3Ctrl.text.trim(),
       };
 
-      // Generate document
       final bytes = await generateDocxBySearchReplace(
         assetPath: 'assets/templates.docx',
         replacements: map,
       );
 
-      // Save the document
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
           name: 'Part_I.A',
@@ -269,7 +307,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
       backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
         title: const Text(
-          'Part I.A - Mandate and Functions',
+          'Part I.A - Department/Agency Vision/Mission Statement',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -318,7 +356,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
                   Icon(Icons.lock, size: 48, color: Colors.grey),
                   const SizedBox(height: 12),
                   const Text(
-                    'This section has been finalized.',
+                    'Part I.A - Department/Agency Vision/Mission Statement has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],

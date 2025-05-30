@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Text;
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -198,6 +199,8 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
       _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
 
   bool _compiling = false;
+  String? _fileUrl;
+  final _storage = FirebaseStorage.instance;
 
   @override
   void initState() {
@@ -317,35 +320,19 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
 
   Future<void> _saveData({bool finalize = false}) async {
     if (!_formKey.currentState!.validate()) return;
+    if (_orgStructureImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please upload an organizational structure image'))
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
-      if (finalize) {
-        setState(() => _isFinalized = true);
-      }
-      
-      await _sectionRef.set({
-        'totalEmployees': totalEmployeesCtl.text,
-        'regionalOffices': regionalOfficesCtl.text,
-        'provincialOffices': provincialOfficesCtl.text,
-        'otherOffices': otherOfficesCtl.text,
-        
-        'coPlantilaPositions': coPlantilaCtl.text,
-        'coVacant': coVacantCtl.text,
-        'coFilledPlantilaPositions': coFilledPlantilaCtl.text,
-        'coFilledPhysicalPositions': coFilledPhysicalCtl.text,
-        'coCosws': coCoswsCtl.text,
-        'coContractual': coContractualCtl.text,
-        'coTotal': coTotalCtl.text,
-        
-        'foPlantilaPositions': foPlantilaCtl.text,
-        'foVacant': foVacantCtl.text,
-        'foFilledPlantilaPositions': foFilledPlantilaCtl.text,
-        'foFilledPhysicalPositions': foFilledPhysicalCtl.text,
-        'foCosws': foCoswsCtl.text,
-        'foContractual': foContractualCtl.text,
-        'foTotal': foTotalCtl.text,
+      final imageRef = _storage.ref().child('${widget.documentId}/I.B/orgStructure.png');
+      await imageRef.putData(_orgStructureImage!);
 
+      final replacements = {
         'plannerName'           : plannerNameCtl.text.trim(),
         'plantillaPosition'     : positionCtl.text.trim(),
         'organizationalUnit'    : unitCtl.text.trim(),
@@ -357,21 +344,84 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         'nicthsProjectCost'     : nicthsCtl.text.trim(),
         'hsdvProjectCost'       : hsdvCtl.text.trim(),
         'hecsProjectCost'       : hecsCtl.text.trim(),
-        'organizationalStructure': _orgStructureImage != null ? base64Encode(_orgStructureImage!) : null,
+        'organizationalStructure': _orgStructureImage != null ? base64Encode(_orgStructureImage!) : '',
+        'modifiedBy': _userId,
+        'totalEmployees': totalEmployeesCtl.text.trim(),
+        'regionalOffices': regionalOfficesCtl.text.trim(),
+        'provincialOffices': provincialOfficesCtl.text.trim(),
+        'otherOffices': otherOfficesCtl.text.trim(),
+        'coPlantilaPositions': coPlantilaCtl.text.trim(),
+        'coVacant': coVacantCtl.text.trim(),
+        'coFilledPlantilaPositions': coFilledPlantilaCtl.text.trim(),
+        'coFilledPhysicalPositions': coFilledPhysicalCtl.text.trim(),
+        'coCosws': coCoswsCtl.text.trim(),
+        'coContractual': coContractualCtl.text.trim(),
+        'coTotal': coTotalCtl.text.trim(),
+        'foPlantilaPositions': foPlantilaCtl.text.trim(),
+        'foVacant': foVacantCtl.text.trim(),
+        'foFilledPlantilaPositions': foFilledPlantilaCtl.text.trim(),
+        'foFilledPhysicalPositions': foFilledPhysicalCtl.text.trim(),
+        'foCosws': foCoswsCtl.text.trim(),
+        'foContractual': foContractualCtl.text.trim(),
+        'foTotal': foTotalCtl.text.trim(),
+      };
+
+      final docxBytes = await generateDocxWithImage(
+        assetPath: 'assets/templates_b.docx',
+        placeholder: '\${orgStructure}',
+        imageBytes: _orgStructureImage!,
+        replacements: replacements,
+      );
+
+      final docxRef = _storage.ref().child('${widget.documentId}/I.B/document.docx');
+      await docxRef.putData(docxBytes);
+      final docxUrl = await docxRef.getDownloadURL();
+
+      final payload = {
+        ...replacements,
+        'fileUrl': docxUrl,
         'modifiedBy': _userId,
         'lastModified': FieldValue.serverTimestamp(),
         'isFinalized': finalize || _isFinalized,
-      }, SetOptions(merge: true));
+      };
 
+      final doc = await _sectionRef.get();
+      if (!doc.exists) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        payload['createdBy'] = _userId;
+      }
+
+      await _sectionRef.set(payload, SetOptions(merge: true));
+      setState(() {
+        _isFinalized = finalize;
+        _fileUrl = docxUrl;
+      });
+      
+      if (finalize) {
+        final user = FirebaseAuth.instance.currentUser;
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+        final username = userDoc.data()?['username'] ?? user.uid;
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'title': 'Part I.B Finalized',
+          'body': 'Part I.B has been finalized by $username',
+          'readBy': {},
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Data finalized successfully' : 'Data saved successfully')),
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
       );
+      
+      if (finalize) {
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving data: $e')),
+        SnackBar(content: Text('Save error: $e'))
       );
     } finally {
-      if (mounted) setState(() => _saving = false);
+      setState(() => _saving = false);
     }
   }
 
@@ -849,7 +899,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
       backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
         title: const Text(
-          'Part I.B - Organizational Structure',
+          'Part I.B - Department/Agency Profile',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -896,9 +946,9 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.lock, size: 48, color: Colors.grey),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'This section has been finalized.',
+                  SizedBox(height: 12),
+                  Text(
+                    'Part I.B - Department/Agency Profile has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
@@ -979,7 +1029,6 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
                               offset: const Offset(0, 2),
                             ),
                           ],
-                          border: Border.all(color: Colors.grey.shade200),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1031,7 +1080,6 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
                               offset: const Offset(0, 2),
                             ),
                           ],
-                          border: Border.all(color: Colors.grey.shade200),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

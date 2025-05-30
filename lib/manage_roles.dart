@@ -11,7 +11,7 @@ class ManageRolesPage extends StatefulWidget {
 }
 
 class _ManageRolesPageState extends State<ManageRolesPage> {
-  final int _rowsPerPage = 5;
+  final int _rowsPerPage = 10;
   final List<String> _allRoles = ['user', 'admin', 'manager'];
   final Map<String, String> _editedRoles = {};
   final DateFormat _fmt = DateFormat.yMd().add_jm();
@@ -19,6 +19,7 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
   Timer? _debounce;
   String _filterText = '';
   int _currentPage = 0;
+  bool _createdAtAscending = true;
 
   @override
   void dispose() {
@@ -32,7 +33,7 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
     _debounce = Timer(const Duration(milliseconds: 500), () {
       setState(() {
         _filterText = value.trim().toLowerCase();
-        _currentPage = 0; // Reset to page 1 when searching
+        _currentPage = 0; 
       });
     });
   }
@@ -68,6 +69,23 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
           return name.contains(_filterText) || email.contains(_filterText);
         }).toList();
 
+        docs.sort((a, b) {
+          final aData = a.data()! as Map<String, dynamic>;
+          final bData = b.data()! as Map<String, dynamic>;
+          final aIsAdmin = (aData['role'] ?? '').toString().toLowerCase() == 'admin';
+          final bIsAdmin = (bData['role'] ?? '').toString().toLowerCase() == 'admin';
+          if (aIsAdmin && !bIsAdmin) return -1;
+          if (!aIsAdmin && bIsAdmin) return 1;
+          final aCreated = aData['createdAt'] as Timestamp?;
+          final bCreated = bData['createdAt'] as Timestamp?;
+          if (aCreated != null && bCreated != null) {
+            return _createdAtAscending
+                ? aCreated.compareTo(bCreated)
+                : bCreated.compareTo(aCreated);
+          }
+          return 0;
+        });
+
         if (_currentPage * _rowsPerPage >= docs.length && _currentPage != 0) {
           _currentPage = 0;
         }
@@ -79,7 +97,11 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Manage Roles', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 28)),
+              Text('Manage Roles', style: const TextStyle(
+                fontWeight: FontWeight.bold, 
+                fontSize: 28,
+                color: Color(0xff021e84),
+              )),
               const SizedBox(height: 12),
 
               Align(
@@ -90,12 +112,20 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
                     controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Search users…',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(Icons.search, color: Color(0xff021e84)),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
+                        borderSide: const BorderSide(color: Color(0xff021e84)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: const BorderSide(color: Color(0xff021e84)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: const BorderSide(color: Color(0xff021e84), width: 2),
                       ),
                     ),
                     onChanged: _onSearchChanged,
@@ -122,35 +152,66 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
 
                       return Card(
                         margin: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: Color(0xff021e84), width: 1),
+                        ),
+                        elevation: 0,
                         color: Colors.white,
                         child: Padding(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(username, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              Text(
+                                username,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xff021e84),
+                                ),
+                              ),
                               const SizedBox(height: 4),
-                              Text(email, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                              Text(
+                                email,
+                                style: const TextStyle(color: Colors.grey, fontSize: 14),
+                              ),
                               const SizedBox(height: 8),
-                              Text('Created: $createdAt', style: const TextStyle(fontSize: 12)),
-                              const SizedBox(height: 8),
+                              Text(
+                                'Created: $createdAt',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              const SizedBox(height: 12),
                               Row(
                                 children: [
                                   Expanded(
-                                    child: DropdownButton<String>(
-                                      value: edited,
-                                      isExpanded: true,
-                                      items: _allRoles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
-                                      onChanged: (v) {
-                                        if (v == null) return;
-                                        setState(() => _editedRoles[id] = v);
-                                      },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: const Color(0xff021e84)),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: DropdownButton<String>(
+                                        value: edited,
+                                        isExpanded: true,
+                                        underline: const SizedBox(),
+                                        items: _allRoles.map((r) => DropdownMenuItem(
+                                          value: r,
+                                          child: Text(
+                                            r,
+                                            style: const TextStyle(color: Color(0xff021e84)),
+                                          ),
+                                        )).toList(),
+                                        onChanged: (v) {
+                                          if (v == null) return;
+                                          setState(() => _editedRoles[id] = v);
+                                        },
+                                      ),
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
                                   IconButton(
-                                    icon: const Icon(Icons.save),
+                                    icon: const Icon(Icons.save, color: Color(0xff021e84)),
                                     onPressed: () {
                                       final newRole = _editedRoles[id];
                                       if (newRole != null && newRole != currentRole) {
@@ -159,7 +220,10 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
                                             .doc(id)
                                             .update({'role': newRole});
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Role updated')),
+                                          const SnackBar(
+                                            content: Text('Role updated'),
+                                            backgroundColor: Color(0xff021e84),
+                                          ),
                                         );
                                         setState(() {
                                           _editedRoles.remove(id);
@@ -185,17 +249,43 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xffF4F6FA),
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                          decoration: const BoxDecoration(
+                            color: Color(0xff021e84),
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
                           ),
                           child: Row(
-                            children: const [
-                              _HeaderCell('Username', flex: 3),
-                              _HeaderCell('Email', flex: 4),
-                              _HeaderCell('Created At', flex: 3),
-                              _HeaderCell('Role', flex: 1),
-                              Spacer(flex: 1),
+                            children: [
+                              const _HeaderCell('Username', flex: 3, textColor: Colors.white),
+                              const _HeaderCell('Email', flex: 4, textColor: Colors.white),
+                              Expanded(
+                                flex: 3,
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      'Created At',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      padding: EdgeInsets.zero,
+                                      icon: Icon(
+                                        _createdAtAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                                        color: Colors.yellow,
+                                        size: 18,
+                                      ),
+                                      tooltip: _createdAtAscending ? 'Sort by newest' : 'Sort by oldest',
+                                      onPressed: () {
+                                        setState(() => _createdAtAscending = !_createdAtAscending);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const _HeaderCell('Role', flex: 1, textColor: Colors.white),
+                              const Spacer(flex: 1),
                             ],
                           ),
                         ),
@@ -268,24 +358,41 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: const BoxDecoration(
+                            color: Color(0xfff4f6fa),
+                            borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+                          ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Page ${_currentPage + 1} of ${((docs.length - 1) ~/ _rowsPerPage) + 1}'),
+                              RichText(
+                                text: TextSpan(
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black87),
+                                  children: [
+                                    const TextSpan(text: 'Page '),
+                                    TextSpan(
+                                      text: '${_currentPage + 1}',
+                                      style: const TextStyle(
+                                        color: Color(0xff021e84),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    TextSpan(text: ' of ${((docs.length - 1) ~/ _rowsPerPage) + 1}'),
+                                  ],
+                                ),
+                              ),
                               Row(
                                 children: [
-                                  TextButton(
-                                    onPressed: _currentPage > 0
-                                        ? () => setState(() => _currentPage--)
-                                        : null,
-                                    child: const Text('Previous'),
+                                  _PrettyNavButton(
+                                    label: 'Previous',
+                                    enabled: _currentPage > 0,
+                                    onTap: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
                                   ),
                                   const SizedBox(width: 8),
-                                  TextButton(
-                                    onPressed: (_currentPage + 1) * _rowsPerPage < docs.length
-                                        ? () => setState(() => _currentPage++)
-                                        : null,
-                                    child: const Text('Next'),
+                                  _PrettyNavButton(
+                                    label: 'Next',
+                                    enabled: (_currentPage + 1) * _rowsPerPage < docs.length,
+                                    onTap: (_currentPage + 1) * _rowsPerPage < docs.length ? () => setState(() => _currentPage++) : null,
                                   ),
                                 ],
                               ),
@@ -305,22 +412,25 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
 }
 
 class _HeaderCell extends StatelessWidget {
-  final String label;
+  final String text;
   final int flex;
+  final Color textColor;
 
-  const _HeaderCell(this.label, {this.flex = 1});
+  const _HeaderCell(this.text, {required this.flex, this.textColor = const Color(0xff021e84)});
 
   @override
-  Widget build(BuildContext context) => Expanded(
-    flex: flex,
-    child: Text(
-      label,
-      style: const TextStyle(
-        fontWeight: FontWeight.bold,
-        color: Colors.black54,
+  Widget build(BuildContext context) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: textColor,
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _HoverableRow extends StatefulWidget {
@@ -340,10 +450,53 @@ class _HoverableRowState extends State<_HoverableRow> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        color: _hovering ? Colors.grey.withOpacity(0.15) : Colors.transparent,
+      child: Container(
+        color: _hovering ? const Color(0xff021e84).withOpacity(0.05) : Colors.white,
         child: widget.child,
+      ),
+    );
+  }
+}
+
+class _PrettyNavButton extends StatefulWidget {
+  final String label;
+  final bool enabled;
+  final VoidCallback? onTap;
+  const _PrettyNavButton({required this.label, required this.enabled, this.onTap});
+
+  @override
+  State<_PrettyNavButton> createState() => _PrettyNavButtonState();
+}
+
+class _PrettyNavButtonState extends State<_PrettyNavButton> {
+  bool _hovering = false;
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.enabled
+        ? (_hovering ? const Color(0xff021e84).withOpacity(0.85) : const Color(0xff021e84))
+        : Colors.grey.shade400;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.enabled ? widget.onTap : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          decoration: BoxDecoration(
+            color: widget.enabled ? color.withOpacity(0.08) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color),
+          ),
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
+          ),
+        ),
       ),
     );
   }

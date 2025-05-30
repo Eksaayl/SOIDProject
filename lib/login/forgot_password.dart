@@ -38,7 +38,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Password reset email sent')),
       );
-      Navigator.pop(context); // Go back to the login page after email is sent
+      Navigator.pop(context); 
     } on FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: ${e.message}')),
@@ -53,10 +53,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xff021e84),  // Set background color to match register.dart
+      backgroundColor: const Color(0xff021e84), 
       appBar: AppBar(
         title: const Text('Forgot Password'),
-        backgroundColor: const Color(0xff021e84),  // Match the color scheme
+        backgroundColor: const Color(0xff021e84), 
       ),
       body: Center(
         child: Padding(
@@ -72,7 +72,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,  // Ensure text is white for readability
+                    color: Colors.white, 
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -100,7 +100,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _sendPasswordResetEmail,
                     style: ElevatedButton.styleFrom(
-                      foregroundColor: Colors.black, backgroundColor: Colors.white, // Text color inside the button
+                      foregroundColor: Colors.black, backgroundColor: Colors.white, 
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
@@ -116,7 +116,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   children: [
                     const Text('Remembered your password?', style: TextStyle(color: Colors.white70)),
                     TextButton(
-                      onPressed: () => Navigator.pop(context), // Go back to the login page
+                      onPressed: () => Navigator.pop(context), 
                       child: const Text(
                         'Login',
                         style: TextStyle(color: Colors.white),

@@ -1,5 +1,3 @@
-// lib/register.dart
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -44,7 +42,6 @@ class _RegisterPageState extends State<RegisterPage> {
 
     setState(() => _isLoading = true);
     try {
-      // 1) Create the auth user
       final cred = await _auth.createUserWithEmailAndPassword(
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
@@ -52,7 +49,6 @@ class _RegisterPageState extends State<RegisterPage> {
       final uid = cred.user!.uid;
       debugPrint('🔑 Auth signup succeeded, uid = $uid');
 
-      // 2) Now write to Firestore in its own try/catch
       try {
         await _firestore.collection('users').doc(uid).set({
           'username': _usernameCtrl.text.trim(),

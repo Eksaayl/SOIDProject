@@ -188,7 +188,6 @@ class _LoginPageState extends State<LoginPage> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () {
-                        // Navigate to the ForgotPasswordPage
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),

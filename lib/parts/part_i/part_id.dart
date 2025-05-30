@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:archive/archive.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -32,14 +33,11 @@ Future<Uint8List> generateDocxBySearchReplace({
   print('Original XML content (first 500 chars):');
   print(xmlStr.substring(0, xmlStr.length > 500 ? 500 : xmlStr.length));
 
-  // First, clean up the XML by removing Word's internal tags within placeholders
   final cleanXml = xmlStr.replaceAllMapped(
     RegExp(r'\$\{.*?\}', multiLine: true, dotAll: true),
     (match) {
       String placeholder = match.group(0)!;
-      // Remove all XML tags within the placeholder
       placeholder = placeholder.replaceAll(RegExp(r'<[^>]+>'), '');
-      // Remove any extra whitespace
       placeholder = placeholder.replaceAll(RegExp(r'\s+'), '');
       return placeholder;
     },
@@ -64,12 +62,9 @@ Future<Uint8List> generateDocxBySearchReplace({
   complete.forEach((ph, val) {
     String processedValue = val;
 
-    // Special handling for placeholders with multiple items
     if (ph == '\${strategicChallenges}' && val.contains('•')) {
-      // Count the number of bullet points to determine if there are multiple items
       final bulletCount = '•'.allMatches(val).length;
       if (bulletCount > 1) {
-        // Format with proper Word XML paragraph breaks between bullet points
         processedValue = val.replaceAll('\n\n', '\n\n\n');
       }
     }
@@ -105,6 +100,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
   final _formKey = GlobalKey<FormState>();
   Uint8List? _uploadedFileBytes;
   String? _fileName;
+  String? _fileUrl;
   bool _loading = true;
   bool _saving = false;
   bool _isFinalized = false;
@@ -112,6 +108,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
+  final _storage = FirebaseStorage.instance;
   String get _userId =>
       _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
 
@@ -135,11 +132,21 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         final data = doc.data() as Map<String, dynamic>;
         setState(() {
           _isFinalized = data['isFinalized'] ?? false;
-          if (data['uploadedFile'] != null) {
-            _uploadedFileBytes = base64Decode(data['uploadedFile'] as String);
-            _fileName = data['fileName'] as String?;
-          }
+          _fileName = data['fileName'] as String?;
+          _fileUrl = data['fileUrl'] as String?;
         });
+
+        try {
+          final docxRef = _storage.ref().child('${widget.documentId}/I.D/document.docx');
+          final docxBytes = await docxRef.getData();
+          if (docxBytes != null) {
+            setState(() {
+              _uploadedFileBytes = docxBytes;
+            });
+          }
+        } catch (e) {
+          print('Error loading DOCX: $e');
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -160,10 +167,22 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
+          final docxRef = _storage.ref().child('${widget.documentId}/I.D/document.docx');
+          await docxRef.putData(file.bytes!);
+          
+          await _sectionRef.set({
+            'docxBytes': base64Encode(file.bytes!),
+            'lastModified': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          
           setState(() {
             _uploadedFileBytes = file.bytes;
             _fileName = file.name;
           });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Document uploaded and saved successfully'))
+          );
         }
       }
     } catch (e) {
@@ -171,6 +190,17 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         SnackBar(content: Text('File pick error: $e'))
       );
     }
+  }
+
+  Future<String> _uploadToStorage() async {
+    if (_uploadedFileBytes == null) throw Exception('No file to upload');
+    
+    final storageRef = _storage.ref()
+        .child('${widget.documentId}/I.D/document.docx');
+
+    final uploadTask = storageRef.putData(_uploadedFileBytes!);
+    final snapshot = await uploadTask;
+    return await snapshot.ref.getDownloadURL();
   }
 
   Future<void> _save({bool finalize = false}) async {
@@ -185,9 +215,11 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     setState(() => _saving = true);
 
     try {
+      final fileUrl = await _uploadToStorage();
+
       final payload = {
-        'uploadedFile': base64Encode(_uploadedFileBytes!),
         'fileName': _fileName,
+        'fileUrl': fileUrl,
         'modifiedBy': _userId,
         'lastModified': FieldValue.serverTimestamp(),
         'isFinalized': finalize || _isFinalized,
@@ -200,6 +232,18 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
+
+      if (finalize) {
+        final user = FirebaseAuth.instance.currentUser;
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+        final username = userDoc.data()?['username'] ?? user.uid;
+        await FirebaseFirestore.instance.collection('notifications').add({
+          'title': 'Part I.D Finalized',
+          'body': 'Part I.D has been finalized by $username',
+          'readBy': {},
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
@@ -218,7 +262,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
   }
 
   Future<void> _compileDocx() async {
-    if (_uploadedFileBytes == null) {
+    if (_fileUrl == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please upload a document first'))
       );
@@ -227,17 +271,22 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
     setState(() => _compiling = true);
     try {
+      final ref = _storage.refFromURL(_fileUrl!);
+      final bytes = await ref.getData();
+      
+      if (bytes == null) throw Exception('Failed to download file');
+
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
           name: 'Part_I.D',
-          bytes: _uploadedFileBytes!,
+          bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
         final path = '${dir.path}/Part_I.D_${DateTime.now().millisecondsSinceEpoch}.docx';
-        await File(path).writeAsBytes(_uploadedFileBytes!);
+        await File(path).writeAsBytes(bytes);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))
         );
@@ -260,35 +309,42 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
-        title: const Text('Part I.D - Strategic Challenges'),
+        title: const Text(
+          'Part I.D - Present ICT Situation (Strategic Challenges)',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF2D3748),
         actions: [
           if (_saving)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xff021e84),
+                ),
+              ),
             )
           else ...[
-            IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: _isFinalized ? null : () => _save(),
-            ),
+            if (!_isFinalized)
+              IconButton(
+                icon: const Icon(Icons.save),
+                onPressed: _saving ? null : () => _save(),
+                tooltip: 'Save',
+                color: const Color(0xff021e84),
+              ),
             IconButton(
               icon: const Icon(Icons.check),
-              tooltip: 'Finalize',
               onPressed: _isFinalized ? null : () => _save(finalize: true),
+              tooltip: 'Finalize',
+              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
             ),
-            if (_compiling)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-              )
-            else
-              IconButton(
-                icon: const Icon(Icons.file_download),
-                onPressed: _compileDocx,
-              ),
           ]
         ],
       ),
@@ -300,7 +356,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
                   Icon(Icons.lock, size: 48, color: Colors.grey),
                   SizedBox(height: 12),
                   Text(
-                    'This section has been finalized.',
+                    'Part I.D - Present ICT Situation (Strategic Challenges) has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
@@ -309,102 +365,178 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
           : SingleChildScrollView(
               child: Form(
                 key: _formKey,
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: 600),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Card(
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
-                              side: BorderSide(color: Colors.grey.shade200),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(24.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xff021e84).withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: const Icon(
-                                          Icons.description,
-                                          color: Color(0xff021e84),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      const Text(
-                                        'Strategic Challenges Document',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xff021e84).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.info_outline,
+                                    color: Color(0xff021e84),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Instructions',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3748),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Please upload a DOCX document for Part I.D. The document should contain all necessary information about strategic challenges. You can preview, save, and download the document.',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Color(0xFF4A5568),
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Container(
+                        margin: const EdgeInsets.symmetric(vertical: 10),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 2,
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xff021e84).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.description,
+                                    color: Color(0xff021e84),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Document Upload',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3748),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            if (_uploadedFileBytes != null)
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff021e84).withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: const Color(0xff021e84).withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.insert_drive_file,
+                                      color: Color(0xff021e84),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        _fileName ?? 'Document',
+                                        style: const TextStyle(
+                                          fontSize: 16,
                                           color: Color(0xFF2D3748),
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 20),
-                                  if (_uploadedFileBytes != null) ...[
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade50,
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.grey.shade200),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.description, color: Colors.grey.shade700),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Text(
-                                              _fileName ?? 'Document',
-                                              style: TextStyle(
-                                                color: Colors.grey.shade700,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
                                     ),
-                                    const SizedBox(height: 16),
+                                    IconButton(
+                                      icon: const Icon(Icons.download),
+                                      onPressed: _compileDocx,
+                                      color: const Color(0xff021e84),
+                                      tooltip: 'Download Document',
+                                    ),
                                   ],
-                                  ElevatedButton.icon(
-                                    onPressed: _pickFile,
-                                    icon: Icon(
-                                      _uploadedFileBytes == null ? Icons.upload_file : Icons.edit,
-                                      color: Colors.white,
-                                    ),
-                                    label: Text(
-                                      _uploadedFileBytes == null ? 'Upload Document' : 'Change Document',
-                                      style: const TextStyle(color: Colors.white),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xff021e84),
-                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      elevation: 2,
-                                    ),
+                                ),
+                              ),
+                            const SizedBox(height: 20),
+                            Center(
+                              child: ElevatedButton.icon(
+                                onPressed: _isFinalized ? null : _pickFile,
+                                icon: Icon(
+                                  _uploadedFileBytes == null ? Icons.upload_file : Icons.edit,
+                                  color: Colors.white,
+                                ),
+                                label: Text(
+                                  _uploadedFileBytes == null ? 'Upload Document' : 'Change Document',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                ],
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xff021e84),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  elevation: 2,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 32),
+                    ],
                   ),
                 ),
               ),
