@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:docx_template/docx_template.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../config.dart';
+import 'package:test_project/main_part.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -244,7 +245,7 @@ class _PartIIAState extends State<PartIIA> {
             },
           );
 
-          final docxRef = _storage.ref().child('${widget.documentId}/II.A/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/II.A/Part_II_A.docx');
           await docxRef.putData(bytes);
 
           await _sectionRef.set({
@@ -321,7 +322,8 @@ class _PartIIAState extends State<PartIIA> {
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/Part_II_A_${widget.documentId}.docx');
+        final path = '${directory.path}/Part_II_A_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final file = File(path);
         await file.writeAsBytes(bytes);
       }
 
@@ -519,15 +521,21 @@ class _PartIIAState extends State<PartIIA> {
               ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinal ? null : () {
+              onPressed: _isFinal ? null : () async {
                 if (_isiBytes == null || _isiiBytes == null || _isiiiBytes == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Please upload all three images before finalizing'))
                   );
                   return;
                 }
-                setState(() => _isFinal = true);
-                _saveContent();
+                final confirmed = await showFinalizeConfirmation(
+                  context,
+                  'Part II.A - Information Security Policy'
+                );
+                if (confirmed) {
+                  setState(() => _isFinal = true);
+                  _saveContent();
+                }
               },
               tooltip: 'Finalize',
               color: _isFinal ? Colors.grey : const Color(0xff021e84),

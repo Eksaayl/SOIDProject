@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:archive/archive.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:test_project/main_part.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -137,7 +138,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.D/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/I.D/Part_I_D.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -167,7 +168,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.D/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/I.D/Part_I_D.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -196,7 +197,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     if (_uploadedFileBytes == null) throw Exception('No file to upload');
     
     final storageRef = _storage.ref()
-        .child('${widget.documentId}/I.D/document.docx');
+        .child('${widget.documentId}/I.D/Part_I_D.docx');
 
     final uploadTask = storageRef.putData(_uploadedFileBytes!);
     final snapshot = await uploadTask;
@@ -278,14 +279,14 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I.D',
+          name: 'Part_I_D_${widget.documentId}.docx',
           bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I.D_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/Part_I_D_${DateTime.now().millisecondsSinceEpoch}.docx';
         await File(path).writeAsBytes(bytes);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))
@@ -341,7 +342,15 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
               ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () => _save(finalize: true),
+              onPressed: _isFinalized ? null : () async {
+                final confirmed = await showFinalizeConfirmation(
+                  context,
+                  'Part I.D - Present ICT Situation (Strategic Challenges)'
+                );
+                if (confirmed) {
+                  _save(finalize: true);
+                }
+              },
               tooltip: 'Finalize',
               color: _isFinalized ? Colors.grey : const Color(0xff021e84),
             ),

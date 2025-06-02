@@ -10,19 +10,19 @@ import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:test_project/main_part.dart';
 
-class PartIIC extends StatefulWidget {
+class PartIIIA extends StatefulWidget {
   final String documentId;
   
-  const PartIIC({
+  const PartIIIA({
     Key? key,
     this.documentId = 'document',
   }) : super(key: key);
 
   @override
-  _PartIICState createState() => _PartIICState();
+  _PartIIIAState createState() => _PartIIIAState();
 }
 
-class _PartIICState extends State<PartIIC> {
+class _PartIIIAState extends State<PartIIIA> {
   final _formKey = GlobalKey<FormState>();
   Uint8List? _docxBytes;
   String? _fileName;
@@ -42,7 +42,7 @@ class _PartIICState extends State<PartIIC> {
         .collection('issp_documents')
         .doc(widget.documentId)
         .collection('sections')
-        .doc('II.C');
+        .doc('III.A');
 
     _loadContent();
   }
@@ -58,7 +58,7 @@ class _PartIICState extends State<PartIIC> {
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/II.C/Part_II_C.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/III.A/Part_III_A.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -88,7 +88,7 @@ class _PartIICState extends State<PartIIC> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/II.C/Part_II_C.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/III.A/Part_III_A.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -120,14 +120,14 @@ class _PartIICState extends State<PartIIC> {
     try {
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_II_C_${widget.documentId}.docx',
+          name: 'Part_III_A_${widget.documentId}.docx',
           bytes: _docxBytes!,
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/Part_II_C_${DateTime.now().millisecondsSinceEpoch}.docx';
-        await File(path).writeAsBytes(_docxBytes!);
+        final file = File('${directory.path}/Part_III_A_${widget.documentId}.docx');
+        await file.writeAsBytes(_docxBytes!);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -146,7 +146,7 @@ class _PartIICState extends State<PartIIC> {
     setState(() => _saving = true);
     try {
       await _sectionRef.set({
-        'sectionTitle': 'Part II.C - Document Upload',
+        'sectionTitle': 'Part III.A - Internal Systems Development Components',
         'createdBy': _userId,
         'createdAt': FieldValue.serverTimestamp(),
         'lastModified': FieldValue.serverTimestamp(),
@@ -160,8 +160,8 @@ class _PartIICState extends State<PartIIC> {
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
       final username = userDoc.data()?['username'] ?? user.uid;
       await FirebaseFirestore.instance.collection('notifications').add({
-        'title': 'Part II.C Finalized',
-        'body': 'Part II.C has been finalized by $username',
+        'title': 'Part III.A Finalized',
+        'body': 'Part III.A has been finalized by $username',
         'readBy': {},
         'timestamp': FieldValue.serverTimestamp(),
       });
@@ -306,7 +306,7 @@ class _PartIICState extends State<PartIIC> {
       backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
         title: const Text(
-          'Part II.C - Databases Required',
+          'Part III.A - Internal Systems Development Components',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -344,7 +344,7 @@ class _PartIICState extends State<PartIIC> {
                 }
                 final confirmed = await showFinalizeConfirmation(
                   context,
-                  'Part II.C - Databases Required'
+                  'Part III.A - Internal Systems Development Components'
                 );
                 if (confirmed) {
                   setState(() => _isFinalized = true);
@@ -365,7 +365,7 @@ class _PartIICState extends State<PartIIC> {
                   Icon(Icons.lock, size: 48, color: Colors.grey),
                   SizedBox(height: 12),
                   Text(
-                    'Part II.C - Databases Required has been finalized.',
+                    'Part III.A - Internal Systems Development Components has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
@@ -422,7 +422,7 @@ class _PartIICState extends State<PartIIC> {
                             ),
                             const SizedBox(height: 16),
                             const Text(
-                              'Please upload a DOCX document for Part IIC. The document should contain all necessary information for this section. You can preview, save, and download the document.',
+                              'Please upload a DOCX document for Part III.A. The document should contain all necessary information about Internal Systems Development Components. You can preview, save, and download the document.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),

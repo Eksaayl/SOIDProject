@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:test_project/main_part.dart';
 
 class PartIIB extends StatefulWidget {
   final String documentId;
@@ -24,6 +25,7 @@ class PartIIB extends StatefulWidget {
 class _PartIIBState extends State<PartIIB> {
   final _formKey = GlobalKey<FormState>();
   Uint8List? _docxBytes;
+  String? _fileName;
   bool _loading = true;
   bool _saving = false;
   bool _isFinalized = false;
@@ -52,10 +54,11 @@ class _PartIIBState extends State<PartIIB> {
       if (data != null) {
         setState(() {
           _isFinalized = data['isFinalized'] as bool? ?? false;
+          _fileName = data['fileName'] as String?;
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/II.B/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/II.B/Part_II_B.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -83,18 +86,20 @@ class _PartIIBState extends State<PartIIB> {
       );
 
       if (result != null) {
-        final bytes = result.files.first.bytes;
-        if (bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/II.B/document.docx');
-          await docxRef.putData(bytes);
+        final file = result.files.first;
+        if (file.bytes != null) {
+          final docxRef = _storage.ref().child('${widget.documentId}/II.B/Part_II_B.docx');
+          await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
-            'docxBytes': base64Encode(bytes),
+            'docxBytes': base64Encode(file.bytes!),
             'lastModified': FieldValue.serverTimestamp(),
+            'fileName': file.name,
           }, SetOptions(merge: true));
           
           setState(() {
-            _docxBytes = bytes;
+            _docxBytes = file.bytes;
+            _fileName = file.name;
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -121,8 +126,8 @@ class _PartIIBState extends State<PartIIB> {
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/Part_II_B_${widget.documentId}.docx');
-        await file.writeAsBytes(_docxBytes!);
+        final path = '${directory.path}/Part_II_B_${DateTime.now().millisecondsSinceEpoch}.docx';
+        await File(path).writeAsBytes(_docxBytes!);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -235,10 +240,10 @@ class _PartIIBState extends State<PartIIB> {
                     color: Color(0xff021e84),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Document uploaded',
-                      style: TextStyle(
+                      _fileName ?? 'Document uploaded',
+                      style: const TextStyle(
                         fontSize: 16,
                         color: Color(0xFF2D3748),
                       ),
@@ -330,15 +335,21 @@ class _PartIIBState extends State<PartIIB> {
               ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () {
+              onPressed: _isFinalized ? null : () async {
                 if (_docxBytes == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Please upload a document before finalizing'))
                   );
                   return;
                 }
-                setState(() => _isFinalized = true);
-                _saveContent();
+                final confirmed = await showFinalizeConfirmation(
+                  context,
+                  'Part II.B - Detailed Description of Proposed Information Systems'
+                );
+                if (confirmed) {
+                  setState(() => _isFinalized = true);
+                  _saveContent();
+                }
               },
               tooltip: 'Finalize',
               color: _isFinalized ? Colors.grey : const Color(0xff021e84),

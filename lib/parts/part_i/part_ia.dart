@@ -11,6 +11,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:test_project/main_part.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -191,7 +192,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
       );
 
       final storage = FirebaseStorage.instance;
-      final docxRef = storage.ref().child('${widget.documentId}/I.A/document.docx');
+      final docxRef = storage.ref().child('${widget.documentId}/I.A/Part_I_A.docx');
       await docxRef.putData(docxBytes);
       final docxUrl = await docxRef.getDownloadURL();
 
@@ -253,6 +254,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
         if (text.isNotEmpty) {
           sb.writeln('• $text');
           sb.writeln(); 
+        }
       }
       
       final map = {
@@ -273,14 +275,14 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I.A',
+          name: 'Part_I_A_${widget.documentId}.docx',
           bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I.A_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/Part_I_A_${DateTime.now().millisecondsSinceEpoch}.docx';
         await File(path).writeAsBytes(bytes);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))
@@ -335,7 +337,15 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
             ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinal ? null : () => _save(finalize: true),
+              onPressed: _isFinal ? null : () async {
+                final confirmed = await showFinalizeConfirmation(
+                  context,
+                  'Part I.A - Department/Agency Vision/Mission Statement'
+                );
+                if (confirmed) {
+                  _save(finalize: true);
+                }
+              },
               tooltip: 'Finalize',
               color: _isFinal ? Colors.grey : const Color(0xff021e84),
             ),

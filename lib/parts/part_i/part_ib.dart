@@ -14,6 +14,7 @@ import 'package:flutter_quill/flutter_quill.dart' hide Text;
 import 'package:flutter_quill/quill_delta.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:test_project/main_part.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -373,7 +374,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         replacements: replacements,
       );
 
-      final docxRef = _storage.ref().child('${widget.documentId}/I.B/document.docx');
+      final docxRef = _storage.ref().child('${widget.documentId}/I.B/Part_I_B.docx');
       await docxRef.putData(docxBytes);
       final docxUrl = await docxRef.getDownloadURL();
 
@@ -504,14 +505,14 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I.B',
+          name: 'Part_I_B_${widget.documentId}.docx',
           bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I.B_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/Part_I_B_${DateTime.now().millisecondsSinceEpoch}.docx';
         await File(path).writeAsBytes(bytes);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Compiled to $path')));
@@ -927,7 +928,15 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
             ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () => _saveData(finalize: true),
+              onPressed: _isFinalized ? null : () async {
+                final confirmed = await showFinalizeConfirmation(
+                  context,
+                  'Part I.B - Department/Agency Profile'
+                );
+                if (confirmed) {
+                  _saveData(finalize: true);
+                }
+              },
               tooltip: 'Finalize',
               color: _isFinalized ? Colors.grey : const Color(0xff021e84),
             ),

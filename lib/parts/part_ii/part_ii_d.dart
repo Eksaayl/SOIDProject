@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart' show rootBundle;
 import '../../config.dart';
+import 'package:test_project/main_part.dart';
 
 Future<Uint8List> generateDocxWithImages({
   required Map<String, Uint8List> images,
@@ -210,7 +211,7 @@ class _PartIIDState extends State<PartIID> {
             },
           );
 
-          final docxRef = _storage.ref().child('${widget.documentId}/II.D/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/II.D/Part_II_D.docx');
           await docxRef.putData(bytes);
 
           await _sectionRef.set({
@@ -290,7 +291,8 @@ class _PartIIDState extends State<PartIID> {
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/Part_II_D_${widget.documentId}.docx');
+        final path = '${directory.path}/Part_II_D_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final file = File(path);
         await file.writeAsBytes(bytes);
       }
 
@@ -486,15 +488,21 @@ class _PartIIDState extends State<PartIID> {
               ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () {
+              onPressed: _isFinalized ? null : () async {
                 if (_nlcImageBytes == null || _pnlImageBytes == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Please upload both images before finalizing'))
                   );
                   return;
                 }
-                setState(() => _isFinalized = true);
-                _saveContent();
+                final confirmed = await showFinalizeConfirmation(
+                  context,
+                  'Part II.D - Network Layout'
+                );
+                if (confirmed) {
+                  setState(() => _isFinalized = true);
+                  _saveContent();
+                }
               },
               tooltip: 'Finalize',
               color: _isFinalized ? Colors.grey : const Color(0xff021e84),

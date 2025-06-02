@@ -7,6 +7,31 @@ import 'Parts/part_two.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+Future<bool> showFinalizeConfirmation(BuildContext context, String sectionName) async {
+  return await showDialog<bool>(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: const Text('Confirm Finalization'),
+        content: Text('Are you sure you want to finalize $sectionName? This action cannot be undone.'),
+        actions: <Widget>[
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          TextButton(
+            child: const Text('Finalize'),
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xff021e84),
+            ),
+          ),
+        ],
+      );
+    },
+  ) ?? false;
+}
+
 class HorizontalTabsPage extends StatefulWidget {
   const HorizontalTabsPage({super.key});
 
@@ -85,7 +110,7 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
   Future<void> _markNotificationAsRead(String notificationId) async {
     if (_username == null) return;
     final now = DateTime.now();
-    final expiresAt = now.add(const Duration(seconds: 5));
+    final expiresAt = now.add(const Duration(hours: 24));
     await FirebaseFirestore.instance
       .collection('notifications')
       .doc(notificationId)

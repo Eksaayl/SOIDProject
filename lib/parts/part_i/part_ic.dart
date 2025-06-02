@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_quill/flutter_quill.dart' hide Text;
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:test_project/main_part.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -174,7 +175,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
         imageBytes: _pickedBytes!,
       );
 
-      final docxRef = _storage.ref().child('${widget.documentId}/I.C/document.docx');
+      final docxRef = _storage.ref().child('${widget.documentId}/I.C/Part_I_C.docx');
       await docxRef.putData(docxBytes);
       final docxUrl = await docxRef.getDownloadURL();
 
@@ -239,14 +240,14 @@ class _PartICFormPageState extends State<PartICFormPage> {
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I.C',
+          name: 'Part_I_C_${widget.documentId}.docx',
           bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I.C_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/Part_I_C_${DateTime.now().millisecondsSinceEpoch}.docx';
         await File(path).writeAsBytes(bytes);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))
@@ -301,7 +302,15 @@ class _PartICFormPageState extends State<PartICFormPage> {
             ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinal ? null : () => _saveSection(finalize: true),
+              onPressed: _isFinal ? null : () async {
+                final confirmed = await showFinalizeConfirmation(
+                  context,
+                  'Part I.C - The Department/Agency and its Environment (Functional Interface Chart)'
+                );
+                if (confirmed) {
+                  _saveSection(finalize: true);
+                }
+              },
               tooltip: 'Finalize',
               color: _isFinal ? Colors.grey : const Color(0xff021e84),
             ),

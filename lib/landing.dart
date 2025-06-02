@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:test_project/main_part.dart';
 import 'package:test_project/state/selection_model.dart';
 import 'package:test_project/settings.dart';
-
+import 'admin_dashboard.dart';
 import 'History.dart';
 import 'login/login.dart';
 import 'manage_roles.dart';
@@ -64,7 +64,7 @@ class _LandingState extends State<Landing> {
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
       if (_isAdmin) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
-      _NavItemData(Icons.shopping_basket, 'Orders', const Center(child: Text('Orders Page'))),
+      if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
 
@@ -144,7 +144,7 @@ class _LandingState extends State<Landing> {
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
       if (_isAdmin) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
-      _NavItemData(Icons.shopping_basket, 'Orders', const Center(child: Text('Orders Page'))),
+      if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
     final bottomItems = <_NavItemData>[

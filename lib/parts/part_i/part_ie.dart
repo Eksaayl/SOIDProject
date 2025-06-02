@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:test_project/main_part.dart';
 
 class PartIEFormPage extends StatefulWidget {
   final String documentId;
@@ -56,7 +57,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.E/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/I.E/Part_I_E.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -86,7 +87,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.E/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/I.E/Part_I_E.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -123,14 +124,14 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
     try {
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I.E',
+          name: 'Part_I_E_${widget.documentId}.docx',
           bytes: _uploadedFileBytes!,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I.E_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/Part_I_E_${DateTime.now().millisecondsSinceEpoch}.docx';
         await File(path).writeAsBytes(_uploadedFileBytes!);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))
@@ -236,7 +237,15 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
               ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () => _save(finalize: true),
+              onPressed: _isFinalized ? null : () async {
+                final confirmed = await showFinalizeConfirmation(
+                  context,
+                  'Part I.E - Strategic Concerns for ICT Use'
+                );
+                if (confirmed) {
+                  _save(finalize: true);
+                }
+              },
               tooltip: 'Finalize',
               color: _isFinalized ? Colors.grey : const Color(0xff021e84),
             ),

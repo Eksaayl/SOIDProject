@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'part_iii/part_iii_a.dart';
+import 'part_iii/part_iii_b.dart';
+import 'part_iii/part_iiic.dart';
 
 class Part3 extends StatefulWidget {
   const Part3({super.key});
@@ -85,6 +88,32 @@ class _Part3State extends State<Part3> {
         setState(() {
           _selectedIndex = index;
         });
+        switch (index) {
+          case 0:
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PartIIIA(),
+              ),
+            );
+            break;
+          case 1:
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PartIIIB(),
+              ),
+            );
+            break;
+          case 2:
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PartIIIC(),
+              ),
+            );
+            break;
+        }
       },
       icon: Icon(icon, color: _selectedIndex == index ? Colors.white : Colors.black),
       label: Text(
