@@ -22,6 +22,8 @@ class _LandingState extends State<Landing> {
   static const double _breakpoint = 800.0;
 
   bool _isAdmin = false;
+  bool _isEditor = false;
+  String _userRole = '';
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _userDocStream;
   int _selectedIndex = 0;
 
@@ -36,7 +38,11 @@ class _LandingState extends State<Landing> {
     _userDocStream.listen((snap) {
       if (!snap.exists) return;
       final role = (snap.data()!['role'] as String?)?.toLowerCase() ?? '';
-      setState(() => _isAdmin = role == 'admin');
+      setState(() {
+        _userRole = role;
+        _isAdmin = role == 'admin';
+        _isEditor = role == 'editor';
+      });
     });
   }
 
@@ -63,7 +69,7 @@ class _LandingState extends State<Landing> {
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      if (_isAdmin) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
+      if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
@@ -143,7 +149,7 @@ class _LandingState extends State<Landing> {
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      if (_isAdmin) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
+      if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];

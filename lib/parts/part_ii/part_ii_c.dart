@@ -9,6 +9,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:test_project/main_part.dart';
+import '../../utils/user_utils.dart';
+import '../../services/notification_service.dart';
 
 class PartIIC extends StatefulWidget {
   final String documentId;
@@ -53,12 +55,12 @@ class _PartIICState extends State<PartIIC> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinalized = data['isFinalized'] as bool? ?? false;
+          _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
           _fileName = data['fileName'] as String?;
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/II.C/Part_II_C.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/II.C/document.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -88,7 +90,7 @@ class _PartIICState extends State<PartIIC> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/II.C/Part_II_C.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/II.C/document.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -120,13 +122,13 @@ class _PartIICState extends State<PartIIC> {
     try {
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_II_C_${widget.documentId}.docx',
+          name: 'document.docx',
           bytes: _docxBytes!,
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/Part_II_C_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${directory.path}/document.docx';
         await File(path).writeAsBytes(_docxBytes!);
       }
 
@@ -140,34 +142,34 @@ class _PartIICState extends State<PartIIC> {
     }
   }
 
-  Future<void> _saveContent() async {
+  Future<void> _save({bool finalize = false}) async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _saving = true);
-    try {
-      await _sectionRef.set({
-        'sectionTitle': 'Part II.C - Document Upload',
-        'createdBy': _userId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': _isFinalized,
-        'content': {
-          'docx': _docxBytes != null ? true : false,
-        }
-      }, SetOptions(merge: true));
 
-      final user = FirebaseAuth.instance.currentUser;
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-      final username = userDoc.data()?['username'] ?? user.uid;
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'title': 'Part II.C Finalized',
-        'body': 'Part II.C has been finalized by $username',
-        'readBy': {},
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+    try {
+      final username = await getCurrentUsername();
+      final doc = await _sectionRef.get();
+      final payload = {
+        'modifiedBy': username,
+        'lastModified': FieldValue.serverTimestamp(),
+        'screening': finalize || _isFinalized,
+        'sectionTitle': 'Part II.C',
+      };
+
+      if (!_isFinalized) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        payload['createdBy'] = username;
+      }
+
+      await _sectionRef.set(payload, SetOptions(merge: true));
+      setState(() => _isFinalized = finalize);
+
+      if (finalize) {
+        await createSubmissionNotification('Part II.C');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Finalized'))
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -329,7 +331,7 @@ class _PartIICState extends State<PartIIC> {
             if (!_isFinalized)
               IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: _saving ? null : _saveContent,
+                onPressed: _saving ? null : () => _save(),
                 tooltip: 'Save',
                 color: const Color(0xff021e84),
               ),
@@ -348,7 +350,7 @@ class _PartIICState extends State<PartIIC> {
                 );
                 if (confirmed) {
                   setState(() => _isFinalized = true);
-                  _saveContent();
+                  _save(finalize: true);
                 }
               },
               tooltip: 'Finalize',

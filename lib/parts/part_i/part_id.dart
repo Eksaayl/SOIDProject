@@ -11,6 +11,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:archive/archive.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:test_project/main_part.dart';
+import '../../utils/user_utils.dart';
+import '../../services/notification_service.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -132,13 +134,13 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         setState(() {
-          _isFinalized = data['isFinalized'] ?? false;
+          _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
           _fileName = data['fileName'] as String?;
           _fileUrl = data['fileUrl'] as String?;
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.D/Part_I_D.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/I.D/document.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -168,7 +170,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.D/Part_I_D.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/I.D/document.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -197,7 +199,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     if (_uploadedFileBytes == null) throw Exception('No file to upload');
     
     final storageRef = _storage.ref()
-        .child('${widget.documentId}/I.D/Part_I_D.docx');
+        .child('${widget.documentId}/I.D/document.docx');
 
     final uploadTask = storageRef.putData(_uploadedFileBytes!);
     final snapshot = await uploadTask;
@@ -218,38 +220,34 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     try {
       final fileUrl = await _uploadToStorage();
 
+      final username = await getCurrentUsername();
+      final doc = await _sectionRef.get();
       final payload = {
         'fileName': _fileName,
         'fileUrl': fileUrl,
-        'modifiedBy': _userId,
+        'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': finalize || _isFinalized,
+        'isFinalized': _isFinalized,
+        'screening': finalize || _isFinalized,
+        'sectionTitle': 'Part I.D',
       };
 
       if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
-        payload['createdBy'] = _userId;
+        payload['createdBy'] = username;
       }
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
 
       if (finalize) {
-        final user = FirebaseAuth.instance.currentUser;
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-        final username = userDoc.data()?['username'] ?? user.uid;
-        await FirebaseFirestore.instance.collection('notifications').add({
-          'title': 'Part I.D Finalized',
-          'body': 'Part I.D has been finalized by $username',
-          'readBy': {},
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+        await createSubmissionNotification('Part I.D');
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
       );
-
+      
       if (finalize) {
         Navigator.of(context).pop();
       }
@@ -279,14 +277,14 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I_D_${widget.documentId}.docx',
+          name: 'document.docx',
           bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I_D_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/document.docx';
         await File(path).writeAsBytes(bytes);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))

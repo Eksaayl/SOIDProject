@@ -9,22 +9,23 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:test_project/main_part.dart';
-import '../../utils/user_utils.dart';
+import 'package:test_project/utils/user_utils.dart';
+import 'package:http/http.dart' as http;
 import '../../services/notification_service.dart';
 
-class PartIIB extends StatefulWidget {
+class PartIIIC extends StatefulWidget {
   final String documentId;
   
-  const PartIIB({
+  const PartIIIC({
     Key? key,
     this.documentId = 'document',
   }) : super(key: key);
 
   @override
-  _PartIIBState createState() => _PartIIBState();
+  _PartIIICState createState() => _PartIIICState();
 }
 
-class _PartIIBState extends State<PartIIB> {
+class _PartIIICState extends State<PartIIIC> {
   final _formKey = GlobalKey<FormState>();
   Uint8List? _docxBytes;
   String? _fileName;
@@ -44,7 +45,7 @@ class _PartIIBState extends State<PartIIB> {
         .collection('issp_documents')
         .doc(widget.documentId)
         .collection('sections')
-        .doc('II.B');
+        .doc('III.C');
 
     _loadContent();
   }
@@ -60,7 +61,7 @@ class _PartIIBState extends State<PartIIB> {
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/II.B/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/III.C/document.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -90,7 +91,7 @@ class _PartIIBState extends State<PartIIB> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/II.B/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/III.C/document.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -142,34 +143,30 @@ class _PartIIBState extends State<PartIIB> {
     }
   }
 
-  Future<void> _save({bool finalize = false}) async {
+  Future<void> _saveContent() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
 
+    setState(() => _saving = true);
     try {
       final username = await getCurrentUsername();
-      final doc = await _sectionRef.get();
       final payload = {
-        'modifiedBy': username,
+        'sectionTitle': 'Part III.C',
+        'createdBy': username,
+        'createdAt': FieldValue.serverTimestamp(),
         'lastModified': FieldValue.serverTimestamp(),
-        'screening': finalize || _isFinalized,
-        'sectionTitle': 'Part II.B',
+        'screening': _isFinalized,
+        'content': {
+          'docx': _docxBytes != null ? true : false,
+        },
+        'isFinalized': _isFinalized,
       };
 
-      if (!_isFinalized) {
-        payload['createdAt'] = FieldValue.serverTimestamp();
-        payload['createdBy'] = username;
-      }
-
       await _sectionRef.set(payload, SetOptions(merge: true));
-      setState(() => _isFinalized = finalize);
 
-      if (finalize) {
-        await createSubmissionNotification('Part II.B');
-      }
+      await createSubmissionNotification('Part III.C');
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
+        SnackBar(content: Text(_isFinalized ? 'Finalized' : 'Saved (not finalized)'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -308,7 +305,7 @@ class _PartIIBState extends State<PartIIB> {
       backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
         title: const Text(
-          'Part II.B - Detailed Description of Proposed Information Systems',
+          'Part III.C - Performance Measurement Framework',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -331,7 +328,7 @@ class _PartIIBState extends State<PartIIB> {
             if (!_isFinalized)
               IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: _saving ? null : () => _save(),
+                onPressed: _saving ? null : _saveContent,
                 tooltip: 'Save',
                 color: const Color(0xff021e84),
               ),
@@ -346,11 +343,11 @@ class _PartIIBState extends State<PartIIB> {
                 }
                 final confirmed = await showFinalizeConfirmation(
                   context,
-                  'Part II.B - Detailed Description of Proposed Information Systems'
+                  'Part III.C - Performance Measurement Framework'
                 );
                 if (confirmed) {
                   setState(() => _isFinalized = true);
-                  _save(finalize: true);
+                  _saveContent();
                 }
               },
               tooltip: 'Finalize',
@@ -367,7 +364,7 @@ class _PartIIBState extends State<PartIIB> {
                   Icon(Icons.lock, size: 48, color: Colors.grey),
                   SizedBox(height: 12),
                   Text(
-                    'Part II.B - Detailed Description of Proposed Information Systems has been finalized.',
+                    'Part III.C - Performance Measurement Framework has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
@@ -424,7 +421,7 @@ class _PartIIBState extends State<PartIIB> {
                             ),
                             const SizedBox(height: 16),
                             const Text(
-                              'Please upload a DOCX document for Part IIB. The document should contain all necessary information for this section. You can preview, save, and download the document.',
+                              'Please upload a DOCX document for Part III.C. The document should contain all necessary information for this section. You can preview, save, and download the document.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),

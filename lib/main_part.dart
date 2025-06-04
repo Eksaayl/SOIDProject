@@ -6,22 +6,25 @@ import 'Parts/part_three.dart';
 import 'Parts/part_two.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'services/notification_service.dart';
 
 Future<bool> showFinalizeConfirmation(BuildContext context, String sectionName) async {
   return await showDialog<bool>(
     context: context,
     builder: (BuildContext context) {
       return AlertDialog(
-        title: const Text('Confirm Finalization'),
-        content: Text('Are you sure you want to finalize $sectionName? This action cannot be undone.'),
+        title: const Text('Confirm Submission'),
+        content: Text('Are you sure you want to submit $sectionName? This action cannot be undone.'),
         actions: <Widget>[
           TextButton(
             child: const Text('Cancel'),
             onPressed: () => Navigator.of(context).pop(false),
           ),
           TextButton(
-            child: const Text('Finalize'),
-            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Submit'),
+            onPressed: () async {
+              Navigator.of(context).pop(true);
+            },
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xff021e84),
             ),
@@ -42,6 +45,8 @@ class HorizontalTabsPage extends StatefulWidget {
 class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
   int _selectedIndex = 0;
   String? _username;
+  bool _hasAccess = false;
+  String _userRole = '';
 
   final List<Map<String, dynamic>> _tabs = [
     {'label': 'Part I', 'content': const Part1()},
@@ -66,13 +71,34 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
   void initState() {
     super.initState();
     _fetchUsername();
+    _checkUserAccess();
+  }
+
+  Future<void> _checkUserAccess() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      
+      if (userDoc.exists) {
+        final role = (userDoc.data()?['role'] as String?)?.toLowerCase() ?? '';
+        setState(() {
+          _userRole = role;
+          _hasAccess = role == 'admin' || role == 'editor';
+        });
+      }
+    }
   }
 
   void _markAllAsRead() async {
     if (_username == null) return;
     final snapshot = await FirebaseFirestore.instance.collection('notifications').get();
     for (var doc in snapshot.docs) {
-      doc.reference.update({'readBy.${_username!}': FieldValue.serverTimestamp()});
+      doc.reference.update({
+        'readBy.${_username!}': FieldValue.serverTimestamp(),
+      });
     }
   }
 
@@ -109,15 +135,32 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
 
   Future<void> _markNotificationAsRead(String notificationId) async {
     if (_username == null) return;
-    final now = DateTime.now();
-    final expiresAt = now.add(const Duration(hours: 24));
-    await FirebaseFirestore.instance
+    
+    final doc = await FirebaseFirestore.instance
       .collection('notifications')
       .doc(notificationId)
-      .update({
-        'readBy.${_username!}': now,
-        'expiresAtBy.${_username!}': expiresAt,
+      .get();
+    
+    final data = doc.data();
+    if (data == null) return;
+    
+    final readBy = data['readBy'] as Map<String, dynamic>? ?? {};
+    final expiresAtBy = data['expiresAtBy'] as Map<String, dynamic>? ?? {};
+    
+    // Only set expiration if not already read
+    if (!readBy.containsKey(_username!)) {
+      final now = DateTime.now();
+      final expiresAt = now.add(const Duration(hours: 24));
+      await doc.reference.update({
+        'readBy.${_username!}': FieldValue.serverTimestamp(),
+        'expiresAtBy.${_username!}': Timestamp.fromDate(expiresAt),
       });
+    } else {
+      // Just update read timestamp if already read
+      await doc.reference.update({
+        'readBy.${_username!}': FieldValue.serverTimestamp(),
+      });
+    }
   }
 
   Widget _buildNotificationsDialog(BuildContext context) {
@@ -387,6 +430,78 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_hasAccess) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Container(
+            padding: const EdgeInsets.all(32),
+            margin: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xff021e84).withOpacity(0.1),
+                  blurRadius: 24,
+                  spreadRadius: 2,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+              border: Border.all(
+                color: const Color(0xff021e84).withOpacity(0.18),
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff021e84).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.hourglass_top,
+                    size: 48,
+                    color: Color(0xff021e84),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Waiting for Access',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xff021e84),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Your current role is: $_userRole',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF4A5568),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Please wait for an administrator to grant you access to the document parts.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Color(0xFF4A5568),
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final bool isSmallScreen = MediaQuery.of(context).size.width < 650;
     final bool isSmallerScreen = MediaQuery.of(context).size.width < 450;
 

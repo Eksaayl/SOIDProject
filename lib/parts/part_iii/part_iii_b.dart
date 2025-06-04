@@ -9,6 +9,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../main_part.dart';
+import '../../utils/user_utils.dart';
+import '../../services/notification_service.dart';
 
 class PartIIIB extends StatefulWidget {
   final String documentId;
@@ -46,7 +48,7 @@ class _PartIIIBState extends State<PartIIIB> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinalized = data['isFinalized'] as bool? ?? false;
+          _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
         });
         if (data['projects'] != null && data['projects'] is List) {
           final List projects = data['projects'];
@@ -94,7 +96,7 @@ class _PartIIIBState extends State<PartIIIB> {
 
       if (response.statusCode == 200) {
         final bytes = response.bodyBytes;
-        final fileName = 'Part_III_B_Projects.docx';
+        final fileName = 'document.docx';
         
         try {
           final storageRef = FirebaseStorage.instance
@@ -142,65 +144,34 @@ class _PartIIIBState extends State<PartIIIB> {
     }
   }
 
-  Future<void> saveContent({bool finalize = false}) async {
+  Future<void> _save({bool finalize = false}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
+
     try {
-      print('Starting save process...');
-      final docxUrl = await _generateAndUploadDocx();
-      print('DOCX URL from upload: $docxUrl');
-
-      final projects = projectControllers.map((controllers) {
-        return {
-          'name': controllers['name']!.text,
-          'objectives': controllers['objectives']!.text,
-          'duration': controllers['duration']!.text,
-          'deliverables': controllers['deliverables']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
-          'lead_agency': controllers['lead_agency']!.text,
-          'implementing_agencies': controllers['implementing_agencies']!.text,
-        };
-      }).toList();
-
+      final username = await getCurrentUsername();
+      final doc = await _sectionRef.get();
       final payload = {
-        'projects': projects,
-        'modifiedBy': _userId,
+        'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': finalize || _isFinalized,
+        'screening': finalize || _isFinalized,
+        'sectionTitle': 'Part III.B',
       };
-
-      if (docxUrl != null) {
-        print('Adding DOCX URL to Firestore payload');
-        payload['docxUrl'] = docxUrl;
-        payload['docxUploadedAt'] = FieldValue.serverTimestamp();
-      } else {
-        print('No DOCX URL available to add to payload');
-      }
 
       if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
-        payload['createdBy'] = _userId;
+        payload['createdBy'] = username;
       }
 
-      print('Saving to Firestore...');
       await _sectionRef.set(payload, SetOptions(merge: true));
-      print('Firestore save completed');
-      
       setState(() => _isFinalized = finalize);
 
       if (finalize) {
-        final user = FirebaseAuth.instance.currentUser;
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-        final username = userDoc.data()?['username'] ?? user.uid;
-        await FirebaseFirestore.instance.collection('notifications').add({
-          'title': 'Part III.B Finalized',
-          'body': 'Part III.B has been finalized by $username',
-          'readBy': {},
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+        await createSubmissionNotification('Part III.B');
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved')),
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)')),
       );
     } catch (e) {
       print('Error in saveContent: $e');
@@ -268,7 +239,36 @@ class _PartIIIBState extends State<PartIIIB> {
               ),
               Padding(
                 padding: EdgeInsets.all(8),
-                child: TextFormField(controller: controllers['objectives'], enabled: !_isFinalized),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: controllers['objectives'],
+                        maxLines: 4,
+                        enabled: !_isFinalized,
+                        decoration: InputDecoration(hintText: 'One per line for bullets'),
+                      ),
+                    ),
+                    if (!_isFinalized)
+                      IconButton(
+                        icon: Icon(Icons.format_list_bulleted),
+                        tooltip: 'Insert bullet',
+                        onPressed: () {
+                          final controller = controllers['objectives']!;
+                          final text = controller.text;
+                          final selection = controller.selection;
+                          final newText = text.replaceRange(
+                            selection.start,
+                            selection.end,
+                            '• ',
+                          );
+                          controller.text = newText;
+                          controller.selection = TextSelection.collapsed(offset: selection.start + 2);
+                        },
+                      ),
+                  ],
+                ),
               ),
             ]),
             TableRow(children: [
@@ -368,7 +368,7 @@ class _PartIIIBState extends State<PartIIIB> {
       );
       if (response.statusCode == 200) {
         final bytes = response.bodyBytes;
-        final fileName = 'Part_III_B_Projects.docx';
+        final fileName = 'document.docx';
         if (kIsWeb) {
           await FileSaver.instance.saveFile(
             name: fileName,
@@ -437,7 +437,7 @@ class _PartIIIBState extends State<PartIIIB> {
             if (!_isFinalized)
               IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: _saving ? null : () => saveContent(finalize: false),
+                onPressed: _saving ? null : () => _save(finalize: false),
                 tooltip: 'Save',
                 color: const Color(0xff021e84),
               ),
@@ -449,7 +449,7 @@ class _PartIIIBState extends State<PartIIIB> {
                   'Part III.B - Cross-Agency ICT Projects'
                 );
                 if (confirmed) {
-                  saveContent(finalize: true);
+                  _save(finalize: true);
                 }
               },
               tooltip: 'Finalize',

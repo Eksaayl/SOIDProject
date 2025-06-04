@@ -9,6 +9,8 @@ import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:test_project/main_part.dart';
+import '../../utils/user_utils.dart';
+import '../../services/notification_service.dart';
 
 class PartIEFormPage extends StatefulWidget {
   final String documentId;
@@ -51,13 +53,13 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         setState(() {
-          _isFinalized = data['isFinalized'] ?? false;
+          _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
           _fileName = data['fileName'] as String?;
           _fileUrl = data['fileUrl'] as String?;
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.E/Part_I_E.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/I.E/document.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -87,7 +89,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.E/Part_I_E.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/I.E/document.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -124,14 +126,14 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
     try {
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I_E_${widget.documentId}.docx',
+          name: 'document.docx',
           bytes: _uploadedFileBytes!,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I_E_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/document.docx';
         await File(path).writeAsBytes(_uploadedFileBytes!);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))
@@ -159,31 +161,24 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
     try {
       final payload = {
         'fileName': _fileName,
-        'modifiedBy': _userId,
+        'modifiedBy': await getCurrentUsername(),
         'lastModified': FieldValue.serverTimestamp(),
         'isFinalized': finalize || _isFinalized,
+        'screening': finalize || _isFinalized,
       };
       if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
-        payload['createdBy'] = _userId;
+        payload['createdBy'] = await getCurrentUsername();
       }
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
 
       if (finalize) {
-        final user = FirebaseAuth.instance.currentUser;
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-        final username = userDoc.data()?['username'] ?? user.uid;
-        await FirebaseFirestore.instance.collection('notifications').add({
-          'title': 'Part I.E Finalized',
-          'body': 'Part I.E has been finalized by $username',
-          'readBy': {},
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+        await createSubmissionNotification('Part I.E');
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
+        SnackBar(content: Text(_isFinalized ? 'Finalized' : 'Saved (not finalized)'))
       );
       if (finalize) {
         Navigator.of(context).pop();

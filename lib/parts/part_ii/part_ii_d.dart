@@ -12,6 +12,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart' show rootBundle;
 import '../../config.dart';
 import 'package:test_project/main_part.dart';
+import '../../utils/user_utils.dart';
+import '../../services/notification_service.dart';
 
 Future<Uint8List> generateDocxWithImages({
   required Map<String, Uint8List> images,
@@ -103,7 +105,7 @@ class _PartIIDState extends State<PartIID> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinalized = data['isFinalized'] as bool? ?? false;
+          _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
         });
 
         try {
@@ -196,62 +198,31 @@ class _PartIIDState extends State<PartIID> {
     }
   }
 
-  Future<void> _saveContent() async {
+  Future<void> _save({bool finalize = false}) async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _saving = true);
+
     try {
-      if (_isFinalized) {
-        setState(() => _compiling = true);
-        try {
-          final bytes = await generateDocxWithImages(
-            images: {
-              'NLC': _nlcImageBytes!,
-              'PNL': _pnlImageBytes!,
-            },
-          );
+      final username = await getCurrentUsername();
+      final doc = await _sectionRef.get();
+      final payload = {
+        'modifiedBy': username,
+        'lastModified': FieldValue.serverTimestamp(),
+        'screening': finalize || _isFinalized,
+        'sectionTitle': 'Part II.D',
+      };
 
-          final docxRef = _storage.ref().child('${widget.documentId}/II.D/Part_II_D.docx');
-          await docxRef.putData(bytes);
-
-          await _sectionRef.set({
-            'docxBytes': base64Encode(bytes),
-            'lastModified': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error generating DOCX: $e'))
-          );
-        } finally {
-          setState(() => _compiling = false);
-        }
+      if (!_isFinalized) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        payload['createdBy'] = username;
       }
 
-      await _sectionRef.set({
-        'sectionTitle': 'Part II.D - Image Uploads',
-        'createdBy': _userId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': _isFinalized,
-        'content': {
-          'nlc': _nlcImageBytes != null ? true : false,
-          'pnl': _pnlImageBytes != null ? true : false,
-        }
-      }, SetOptions(merge: true));
+      await _sectionRef.set(payload, SetOptions(merge: true));
+      setState(() => _isFinalized = finalize);
 
-      final user = FirebaseAuth.instance.currentUser;
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-      final username = userDoc.data()?['username'] ?? user.uid;
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'title': 'Part II.D Finalized',
-        'body': 'Part II.D has been finalized by $username',
-        'readBy': {},
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Finalized'))
-      );
+      if (finalize) {
+        await createSubmissionNotification('Part II.D');
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Save error: $e'))
@@ -259,6 +230,10 @@ class _PartIIDState extends State<PartIID> {
     } finally {
       setState(() => _saving = false);
     }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
+    );
   }
 
   Future<void> _compileDocx() async {
@@ -278,10 +253,8 @@ class _PartIIDState extends State<PartIID> {
         },
       );
 
-      await _sectionRef.set({
-        'docxBytes': base64Encode(bytes),
-        'lastModified': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final docxRef = _storage.ref().child('${widget.documentId}/II.D/document.docx');
+      await docxRef.putData(bytes);
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
@@ -291,7 +264,7 @@ class _PartIIDState extends State<PartIID> {
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/Part_II_D_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${directory.path}/document.docx';
         final file = File(path);
         await file.writeAsBytes(bytes);
       }
@@ -482,7 +455,7 @@ class _PartIIDState extends State<PartIID> {
             if (!_isFinalized)
               IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: _saving ? null : _saveContent,
+                onPressed: _saving ? null : () => _save(),
                 tooltip: 'Save',
                 color: const Color(0xff021e84),
               ),
@@ -501,7 +474,7 @@ class _PartIIDState extends State<PartIID> {
                 );
                 if (confirmed) {
                   setState(() => _isFinalized = true);
-                  _saveContent();
+                  _save(finalize: true);
                 }
               },
               tooltip: 'Finalize',

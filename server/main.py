@@ -11,7 +11,9 @@ import uvicorn
 from docx.shared import Inches
 import tempfile
 import uuid
-from server.generate_iii_b_docx import create_iii_b_docx
+from server.tables import create_iii_b_docx, create_iii_a_docx
+import argparse
+import mammoth
 
 app = FastAPI()
 
@@ -349,6 +351,70 @@ async def merge_documents_part_ii(
         print(f"Unexpected error in merge_documents_part_ii: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
+@app.post("/merge-documents-part-iii")
+async def merge_documents_part_iii(
+    part_iii_a: UploadFile = File(...),
+    part_iii_b: UploadFile = File(...),
+    part_iii_c: UploadFile = File(...),
+):
+    try:
+        # Read uploaded files
+        try:
+            iii_a_bytes = io.BytesIO(await part_iii_a.read())
+            iii_b_bytes = io.BytesIO(await part_iii_b.read())
+            iii_c_bytes = io.BytesIO(await part_iii_c.read())
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to read uploaded files: {str(e)}")
+
+        # Parse DOCX files
+        try:
+            iii_a_doc = Document(iii_a_bytes)
+            iii_b_doc = Document(iii_b_bytes)
+            iii_c_doc = Document(iii_c_bytes)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse DOCX files: {str(e)}")
+
+        # Optionally add page breaks between docs
+        def add_page_break(doc):
+            try:
+                p = doc.add_paragraph()
+                run = p.add_run()
+                run.add_break()
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to add page break: {str(e)}")
+
+        try:
+            add_page_break(iii_a_doc)
+            add_page_break(iii_b_doc)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to add page breaks: {str(e)}")
+
+        # Merge documents
+        try:
+            composer = Composer(iii_a_doc)
+            composer.append(iii_b_doc)
+            composer.append(iii_c_doc)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to merge documents: {str(e)}")
+
+        # Save merged document to bytes
+        try:
+            output = io.BytesIO()
+            composer.save(output)
+            output.seek(0)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save merged document: {str(e)}")
+
+        return StreamingResponse(
+            output,
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in merge_documents_part_iii: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
 @app.post("/generate-iii-b-docx/")
 async def generate_iii_b_docx_endpoint(request: Request):
     projects = await request.json()
@@ -356,11 +422,39 @@ async def generate_iii_b_docx_endpoint(request: Request):
     filename = f"iii_b_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
     create_iii_b_docx(projects, output_path)
-    return FileResponse(output_path, filename="Part_III_B_Projects.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+@app.post("/generate-iii-a-docx/")
+async def generate_iii_a_docx_endpoint(request: Request):
+    projects = await request.json()
+    temp_dir = tempfile.gettempdir()
+    filename = f"iii_a_{uuid.uuid4().hex}.docx"
+    output_path = os.path.join(temp_dir, filename)
+    create_iii_a_docx(projects, output_path)
+    return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+@app.post("/convert-docx")
+async def convert_docx(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No selected file")
+    try:
+        contents = await file.read()
+        with open("temp_upload.docx", "wb") as f:
+            f.write(contents)
+        with open("temp_upload.docx", "rb") as docx_file:
+            result = mammoth.convert_to_html(docx_file)
+            html = result.value
+        os.remove("temp_upload.docx")
+        return {"html": html}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to convert DOCX: {str(e)}")
 
 @app.get("/")
 async def root():
     return {"message": "Document Merge Server is running"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+    args = parser.parse_args()
+    uvicorn.run(app, host="0.0.0.0", port=args.port) 

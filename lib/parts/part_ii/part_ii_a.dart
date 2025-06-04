@@ -15,6 +15,8 @@ import 'package:docx_template/docx_template.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../config.dart';
 import 'package:test_project/main_part.dart';
+import '../../utils/user_utils.dart';
+import '../../services/notification_service.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -121,7 +123,7 @@ class _PartIIAState extends State<PartIIA> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinal = data['isFinalized'] as bool? ?? false;
+          _isFinal = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
         });
 
         try {
@@ -229,64 +231,39 @@ class _PartIIAState extends State<PartIIA> {
     }
   }
 
-  Future<void> _saveContent() async {
+  Future<void> _save({bool finalize = false}) async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _saving = true);
+
     try {
-      if (_isFinal) {
-        setState(() => _compiling = true);
-        try {
-          final bytes = await generateDocxWithImages(
-            images: {
-              'ISI': _isiBytes!,
-              'ISII': _isiiBytes!,
-              'ISIII': _isiiiBytes!,
-            },
-          );
+      final username = await getCurrentUsername();
+      final doc = await _sectionRef.get();
+      final payload = {
+        'modifiedBy': username,
+        'lastModified': FieldValue.serverTimestamp(),
+        'screening': finalize || _isFinal,
+        'sectionTitle': 'Part II.A',
+      };
 
-          final docxRef = _storage.ref().child('${widget.documentId}/II.A/Part_II_A.docx');
-          await docxRef.putData(bytes);
-
-          await _sectionRef.set({
-            'docxBytes': base64Encode(bytes),
-            'lastModified': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error generating DOCX: $e'))
-          );
-        } finally {
-          setState(() => _compiling = false);
-        }
+      if (!_isFinal) {
+        payload['createdAt'] = FieldValue.serverTimestamp();
+        payload['createdBy'] = username;
       }
 
-      await _sectionRef.set({
-        'sectionTitle': 'Part II.A - Information Security Policy',
-        'createdBy': _userId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': _isFinal,
-        'content': {
-          'isi': _isiBytes != null ? true : false,
-          'isii': _isiiBytes != null ? true : false,
-          'isiii': _isiiiBytes != null ? true : false,
-        }
-      }, SetOptions(merge: true));
+      await _sectionRef.set(payload, SetOptions(merge: true));
+      setState(() => _isFinal = finalize);
 
-      final user = FirebaseAuth.instance.currentUser;
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-      final username = userDoc.data()?['username'] ?? user.uid;
-      await FirebaseFirestore.instance.collection('notifications').add({
-        'title': 'Part II.A Finalized',
-        'body': 'Part II.A has been finalized by $username',
-        'readBy': {},
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      if (finalize) {
+        await createSubmissionNotification('Part II.A');
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Finalized'))
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
       );
+      
+      if (finalize) {
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Save error: $e'))
@@ -322,7 +299,7 @@ class _PartIIAState extends State<PartIIA> {
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/Part_II_A_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${directory.path}/document.docx';
         final file = File(path);
         await file.writeAsBytes(bytes);
       }
@@ -515,26 +492,20 @@ class _PartIIAState extends State<PartIIA> {
             if (!_isFinal)
               IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: _saving ? null : _saveContent,
+                onPressed: _saving ? null : () => _save(finalize: false),
                 tooltip: 'Save',
                 color: const Color(0xff021e84),
               ),
             IconButton(
               icon: const Icon(Icons.check),
               onPressed: _isFinal ? null : () async {
-                if (_isiBytes == null || _isiiBytes == null || _isiiiBytes == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please upload all three images before finalizing'))
-                  );
-                  return;
-                }
                 final confirmed = await showFinalizeConfirmation(
                   context,
                   'Part II.A - Information Security Policy'
                 );
                 if (confirmed) {
                   setState(() => _isFinal = true);
-                  _saveContent();
+                  _save(finalize: true);
                 }
               },
               tooltip: 'Finalize',

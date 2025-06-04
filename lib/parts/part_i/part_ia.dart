@@ -12,6 +12,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:test_project/main_part.dart';
+import '../../utils/user_utils.dart';
+import '../../services/notification_service.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -80,7 +82,6 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
   bool _isFinal = false;
 
   late DocumentReference _sectionRef;
-  String get _userId => 'temporary_user';
 
   void _addNewFunctionEditor() {
     functionControllers.add(QuillController.basic());
@@ -152,7 +153,9 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
       pillar1Ctrl.text = data['pillar1'] ?? '';
       pillar2Ctrl.text = data['pillar2'] ?? '';
       pillar3Ctrl.text = data['pillar3'] ?? '';
-      _isFinal = data['isFinalized'] == true;
+      setState(() {
+        _isFinal = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
+      });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Load error: $e')));
     } finally {
@@ -192,43 +195,37 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
       );
 
       final storage = FirebaseStorage.instance;
-      final docxRef = storage.ref().child('${widget.documentId}/I.A/Part_I_A.docx');
+      final docxRef = storage.ref().child('${widget.documentId}/I.A/document.docx');
       await docxRef.putData(docxBytes);
       final docxUrl = await docxRef.getDownloadURL();
 
+      final username = await getCurrentUsername();
       final payload = {
         ...replacements,
         'functions': jsonEncode(
           functionControllers.map((ctrl) => ctrl.document.toDelta().toJson()).toList()
         ),
         'fileUrl': docxUrl,
-        'modifiedBy': _userId,
+        'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': finalize || _isFinal,
+        'screening': finalize || _isFinal,
+        'sectionTitle': 'Part I.A',
       };
 
       if (!_isFinal) {
         payload['createdAt'] = FieldValue.serverTimestamp();
-        payload['createdBy'] = _userId;
+        payload['createdBy'] = username;
       }
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinal = finalize);
       
       if (finalize) {
-        final user = FirebaseAuth.instance.currentUser;
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-        final username = userDoc.data()?['username'] ?? user.uid;
-        await FirebaseFirestore.instance.collection('notifications').add({
-          'title': 'Part I.A Finalized',
-          'body': 'Part I.A has been finalized by $username',
-          'readBy': {},
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+        await createSubmissionNotification('Part I.A');
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
       );
       
       if (finalize) {
@@ -275,14 +272,14 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I_A_${widget.documentId}.docx',
+          name: 'document.docx',
           bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I_A_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/document.docx';
         await File(path).writeAsBytes(bytes);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))

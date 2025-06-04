@@ -15,6 +15,8 @@ import 'package:flutter_quill/quill_delta.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:test_project/main_part.dart';
+import '../../utils/user_utils.dart';
+import '../../services/notification_service.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -261,7 +263,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         setState(() {
-          _isFinalized = data['isFinalized'] ?? false;
+          _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
           
           totalEmployeesCtl.text = data['totalEmployees'] ?? '';
           regionalOfficesCtl.text = data['regionalOffices'] ?? '';
@@ -374,22 +376,23 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         replacements: replacements,
       );
 
-      final docxRef = _storage.ref().child('${widget.documentId}/I.B/Part_I_B.docx');
+      final docxRef = _storage.ref().child('${widget.documentId}/I.B/document.docx');
       await docxRef.putData(docxBytes);
       final docxUrl = await docxRef.getDownloadURL();
 
+      final username = await getCurrentUsername();
+      final doc = await _sectionRef.get();
       final payload = {
         ...replacements,
         'fileUrl': docxUrl,
-        'modifiedBy': _userId,
+        'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': finalize || _isFinalized,
+        'screening': finalize || _isFinalized,
+        'sectionTitle': 'Part I.B',
       };
-
-      final doc = await _sectionRef.get();
       if (!doc.exists) {
         payload['createdAt'] = FieldValue.serverTimestamp();
-        payload['createdBy'] = _userId;
+        payload['createdBy'] = username;
       }
 
       await _sectionRef.set(payload, SetOptions(merge: true));
@@ -399,19 +402,11 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
       });
       
       if (finalize) {
-        final user = FirebaseAuth.instance.currentUser;
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-        final username = userDoc.data()?['username'] ?? user.uid;
-        await FirebaseFirestore.instance.collection('notifications').add({
-          'title': 'Part I.B Finalized',
-          'body': 'Part I.B has been finalized by $username',
-          'readBy': {},
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+        await createSubmissionNotification('Part I.B');
       }
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved'))
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
       );
       
       if (finalize) {
@@ -505,14 +500,14 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_I_B_${widget.documentId}.docx',
+          name: 'document.docx',
           bytes: bytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I_B_${DateTime.now().millisecondsSinceEpoch}.docx';
+        final path = '${dir.path}/document.docx';
         await File(path).writeAsBytes(bytes);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Compiled to $path')));
