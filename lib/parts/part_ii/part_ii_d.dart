@@ -554,7 +554,7 @@ class _PartIIDState extends State<PartIID> {
                             ),
                             const SizedBox(height: 16),
                             const Text(
-                              'Please upload two images for Part IID: NLC (National Library of the Philippines) and PNL (Philippine National Library) images. The images should be in PNG format. You can preview, save, and download the images. Click the document icon in the app bar to generate a DOCX file with both images.',
+                              'Please upload two images for Part IID: NLC (Network Layout) and PNL (Proposed Network Layoutr) images.  You can  save, and download the images. Click the document icon in the app bar to generate a DOCX file with both images.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),

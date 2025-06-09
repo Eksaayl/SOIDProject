@@ -85,6 +85,7 @@ flutter:
      - assets/templates_compiled.docx
      - assets/templates_II_a.docx
      - assets/templates_II_d.docx
+     - assets/templates_IV_b.docx
      - assets/.env
 
   # An image asset can refer to one or more resolution-specific "variants", see

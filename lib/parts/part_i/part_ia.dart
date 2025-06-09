@@ -14,6 +14,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:test_project/main_part.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
+import 'package:http/http.dart' as http;
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -168,20 +169,16 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     setState(() => _saving = true);
 
     try {
-      final sb = StringBuffer();
-      
-      for (var controller in functionControllers) {
-        final text = controller.document.toPlainText().trim();
-        if (text.isNotEmpty) {
-          sb.writeln('• $text');
-          sb.writeln(); 
-        }
-      }
-      
-      final replacements = {
+      // Extract bullet list from Quill controllers
+      List<String> functions = functionControllers
+          .map((controller) => controller.document.toPlainText().trim())
+          .where((text) => text.isNotEmpty)
+          .toList();
+
+      final data = {
         'documentName': docNameCtrl.text.trim(),
         'legalBasis': legalBasisCtrl.text.trim(),
-        'functions': sb.toString().trim(),
+        'functions': functions,
         'visionStatement': visionCtrl.text.trim(),
         'missionStatement': missionCtrl.text.trim(),
         'pillar1': pillar1Ctrl.text.trim(),
@@ -189,10 +186,19 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
         'pillar3': pillar3Ctrl.text.trim(),
       };
 
-      final docxBytes = await generateDocxBySearchReplace(
-        assetPath: 'assets/templates.docx',
-        replacements: replacements,
+      // Generate DOCX using the backend endpoint
+      final url = Uri.parse('http://localhost:8000/generate-ia-docx/');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
       );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to generate DOCX: ${response.statusCode}');
+      }
+
+      final docxBytes = response.bodyBytes;
 
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('${widget.documentId}/I.A/document.docx');
@@ -201,7 +207,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
 
       final username = await getCurrentUsername();
       final payload = {
-        ...replacements,
+        ...data,
         'functions': jsonEncode(
           functionControllers.map((ctrl) => ctrl.document.toDelta().toJson()).toList()
         ),
@@ -294,6 +300,63 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     }
   }
 
+  Future<void> generateAndDownloadDocx() async {
+    setState(() => _compiling = true);
+    try {
+      // Extract bullet list from Quill controllers
+      List<String> functions = functionControllers
+          .map((controller) => controller.document.toPlainText().trim())
+          .where((text) => text.isNotEmpty)
+          .toList();
+
+      final data = {
+        'documentName': docNameCtrl.text.trim(),
+        'legalBasis': legalBasisCtrl.text.trim(),
+        'functions': functions,
+        'visionStatement': visionCtrl.text.trim(),
+        'missionStatement': missionCtrl.text.trim(),
+        'pillar1': pillar1Ctrl.text.trim(),
+        'pillar2': pillar2Ctrl.text.trim(),
+        'pillar3': pillar3Ctrl.text.trim(),
+      };
+
+      final url = Uri.parse('http://localhost:8000/generate-ia-docx/');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
+      );
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        final fileName = 'document.docx';
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: bytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(bytes);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('DOCX generated and saved!')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate DOCX: \\${response.statusCode}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: \\${e.toString()}')),
+      );
+    } finally {
+      setState(() => _compiling = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -348,8 +411,8 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
             ),
             IconButton(
               icon: const Icon(Icons.file_download),
-              onPressed: _compileDocx,
-              tooltip: 'Compile DOCX',
+              onPressed: _compiling ? null : generateAndDownloadDocx,
+              tooltip: 'Download DOCX',
               color: const Color(0xff021e84),
             ),
           ],

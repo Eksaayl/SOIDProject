@@ -34,34 +34,34 @@ Future<Uint8List> generateDocxWithImages({
       Uri.parse('${Config.serverUrl}/generate-docx'),
     );
 
-    final templateBytes = await rootBundle.load('assets/templates_II_a.docx');
+    final templateBytes = await rootBundle.load('assets/templates_IV_b.docx');
     request.files.add(
       http.MultipartFile.fromBytes(
         'template',
         templateBytes.buffer.asUint8List(),
-        filename: 'templates_II_a.docx',
+        filename: 'templates_IV_b.docx',
       ),
     );
 
     request.files.add(
       http.MultipartFile.fromBytes(
         'images',
-        images['ISI']!,
-        filename: 'ISI.png',
+        images['Existing']!,
+        filename: 'existing.png',
       ),
     );
     request.files.add(
       http.MultipartFile.fromBytes(
         'images',
-        images['ISII']!,
-        filename: 'ISII.png',
+        images['Proposed']!,
+        filename: 'proposed.png',
       ),
     );
     request.files.add(
       http.MultipartFile.fromBytes(
         'images',
-        images['ISIII']!,
-        filename: 'ISIII.png',
+        images['Placement']!,
+        filename: 'placement.png',
       ),
     );
 
@@ -78,23 +78,23 @@ Future<Uint8List> generateDocxWithImages({
   }
 }
 
-class PartIIA extends StatefulWidget {
+class PartIVB extends StatefulWidget {
   final String documentId;
   
-  const PartIIA({
+  const PartIVB({
     Key? key,
     this.documentId = 'document',
   }) : super(key: key);
 
   @override
-  _PartIIAState createState() => _PartIIAState();
+  _PartIVBState createState() => _PartIVBState();
 }
 
-class _PartIIAState extends State<PartIIA> {
+class _PartIVBState extends State<PartIVB> {
   final _formKey = GlobalKey<FormState>();
-  Uint8List? _isiBytes;
-  Uint8List? _isiiBytes;
-  Uint8List? _isiiiBytes;
+  Uint8List? _existingBytes;
+  Uint8List? _proposedBytes;
+  Uint8List? _placementBytes;
   bool _loading = true;
   bool _saving = false;
   bool _compiling = false;
@@ -112,7 +112,7 @@ class _PartIIAState extends State<PartIIA> {
         .collection('issp_documents')
         .doc(widget.documentId)
         .collection('sections')
-        .doc('II.A');
+        .doc('IV.B');
 
     _loadContent();
   }
@@ -127,27 +127,27 @@ class _PartIIAState extends State<PartIIA> {
         });
 
         try {
-          final isiRef = _storage.ref().child('${widget.documentId}/II.A/isi.png');
-          final isiiRef = _storage.ref().child('${widget.documentId}/II.A/isii.png');
-          final isiiiRef = _storage.ref().child('${widget.documentId}/II.A/isiii.png');
+          final existingRef = _storage.ref().child('${widget.documentId}/IV.B/existing.png');
+          final proposedRef = _storage.ref().child('${widget.documentId}/IV.B/proposed.png');
+          final placementRef = _storage.ref().child('${widget.documentId}/IV.B/placement.png');
           
-          final isiBytes = await isiRef.getData();
-          final isiiBytes = await isiiRef.getData();
-          final isiiiBytes = await isiiiRef.getData();
+          final existingBytes = await existingRef.getData();
+          final proposedBytes = await proposedRef.getData();
+          final placementBytes = await placementRef.getData();
           
-          if (isiBytes != null) {
+          if (existingBytes != null) {
             setState(() {
-              _isiBytes = isiBytes;
+              _existingBytes = existingBytes;
             });
           }
-          if (isiiBytes != null) {
+          if (proposedBytes != null) {
             setState(() {
-              _isiiBytes = isiiBytes;
+              _proposedBytes = proposedBytes;
             });
           }
-          if (isiiiBytes != null) {
+          if (placementBytes != null) {
             setState(() {
-              _isiiiBytes = isiiiBytes;
+              _placementBytes = placementBytes;
             });
           }
         } catch (e) {
@@ -173,19 +173,19 @@ class _PartIIAState extends State<PartIIA> {
       if (result != null) {
         final bytes = result.files.first.bytes;
         if (bytes != null) {
-          final imageRef = _storage.ref().child('${widget.documentId}/II.A/${type.toLowerCase()}.png');
+          final imageRef = _storage.ref().child('${widget.documentId}/IV.B/${type.toLowerCase()}.png');
           await imageRef.putData(bytes);
           
           setState(() {
             switch (type) {
-              case 'ISI':
-                _isiBytes = bytes;
+              case 'Existing':
+                _existingBytes = bytes;
                 break;
-              case 'ISII':
-                _isiiBytes = bytes;
+              case 'Proposed':
+                _proposedBytes = bytes;
                 break;
-              case 'ISIII':
-                _isiiiBytes = bytes;
+              case 'Placement':
+                _placementBytes = bytes;
                 break;
             }
           });
@@ -203,21 +203,21 @@ class _PartIIAState extends State<PartIIA> {
   }
 
   Future<void> _downloadImage(String type) async {
-    final bytes = type == 'ISI' ? _isiBytes : 
-                 type == 'ISII' ? _isiiBytes : 
-                 _isiiiBytes;
+    final bytes = type == 'Existing' ? _existingBytes : 
+                 type == 'Proposed' ? _proposedBytes : 
+                 _placementBytes;
     if (bytes == null) return;
 
     try {
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_II_A_${type}_${widget.documentId}.png',
+          name: 'Part_IV_B_${type}_${widget.documentId}.png',
           bytes: bytes,
           mimeType: MimeType.png,
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/Part_II_A_${type}_${widget.documentId}.png');
+        final file = File('${directory.path}/Part_IV_B_${type}_${widget.documentId}.png');
         await file.writeAsBytes(bytes);
       }
 
@@ -242,11 +242,11 @@ class _PartIIAState extends State<PartIIA> {
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
-        'sectionTitle': 'Part II.A',
-        'isFinalized': _isFinalized,
+        'sectionTitle': 'Part IV.B',
+        'isFinalized': finalize || _isFinalized,
       };
 
-      if (!_isFinalized) {
+      if (!(_isFinalized)) {
         payload['createdAt'] = FieldValue.serverTimestamp();
         payload['createdBy'] = username;
       }
@@ -255,7 +255,7 @@ class _PartIIAState extends State<PartIIA> {
       setState(() => _isFinalized = finalize);
 
       if (finalize) {
-        await createSubmissionNotification('Part II.A');
+        await createSubmissionNotification('Part IV.B');
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -275,7 +275,7 @@ class _PartIIAState extends State<PartIIA> {
   }
 
   Future<void> _compileDocx() async {
-    if (_isiBytes == null || _isiiBytes == null || _isiiiBytes == null) {
+    if (_existingBytes == null || _proposedBytes == null || _placementBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select all three images'))
       );
@@ -286,15 +286,23 @@ class _PartIIAState extends State<PartIIA> {
     try {
       final bytes = await generateDocxWithImages(
         images: {
-          'ISI': _isiBytes!,
-          'ISII': _isiiBytes!,
-          'ISIII': _isiiiBytes!,
+          'Existing': _existingBytes!,
+          'Proposed': _proposedBytes!,
+          'Placement': _placementBytes!,
         },
       );
 
+      final docxRef = _storage.ref().child('${widget.documentId}/IV.B/document.docx');
+      await docxRef.putData(bytes);
+      final downloadUrl = await docxRef.getDownloadURL();
+      await _sectionRef.set({
+        'fileUrl': downloadUrl,
+        'docxUploadedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_II_A_${widget.documentId}.docx',
+          name: 'document.docx',
           bytes: bytes,
           mimeType: MimeType.microsoftWord,
         );
@@ -306,11 +314,11 @@ class _PartIIAState extends State<PartIIA> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('DOCX generated successfully'))
+        const SnackBar(content: Text('Document generated and downloaded successfully'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating DOCX: $e'))
+        SnackBar(content: Text('Error generating document: $e'))
       );
     } finally {
       setState(() => _compiling = false);
@@ -318,9 +326,9 @@ class _PartIIAState extends State<PartIIA> {
   }
 
   Widget _buildImageUploadSection(String type) {
-    final bytes = type == 'ISI' ? _isiBytes : 
-                 type == 'ISII' ? _isiiBytes : 
-                 _isiiiBytes;
+    final bytes = type == 'Existing' ? _existingBytes : 
+                 type == 'Proposed' ? _proposedBytes : 
+                 _placementBytes;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 10),
@@ -470,7 +478,7 @@ class _PartIIAState extends State<PartIIA> {
       backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
         title: const Text(
-          'Part II.A - Conceptual Framework for Information Systems (Diagram of IS Interface)',
+          'Part IV.B - ICT Organizational Structure',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -502,9 +510,10 @@ class _PartIIAState extends State<PartIIA> {
               onPressed: _isFinalized ? null : () async {
                 final confirmed = await showFinalizeConfirmation(
                   context,
-                  'Part II.A - Information Security Policy'
+                  'Part IV.B - ICT Organizational Structure'
                 );
                 if (confirmed) {
+                  setState(() => _isFinalized = true);
                   _save(finalize: true);
                 }
               },
@@ -528,7 +537,7 @@ class _PartIIAState extends State<PartIIA> {
                   Icon(Icons.lock, size: 48, color: Colors.grey),
                   SizedBox(height: 12),
                   Text(
-                    'Part II.A - Conceptual Framework for Information Systems (Diagram of IS Interface) has been finalized.',
+                    'Part IV.B - ICT Organizational Structure has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
@@ -585,7 +594,7 @@ class _PartIIAState extends State<PartIIA> {
                             ),
                             const SizedBox(height: 16),
                             const Text(
-                              'Please upload three images for Part IIA: ISI, ISII, and ISIII. The images should be in PNG format. You can preview, save, and download the images. Click the document icon in the app bar to generate a DOCX file with all three images.',
+                              'Please upload three images for Part IV.B:\n\n1. Existing ICT Organizational Structure\n2. Proposed ICT Organizational Structure\n3. Placement of the Proposed Organizational Structure in the Agency Organizational Chart\n\nThe images should be in PNG format. You can preview, save, and download the images. Click the document icon in the app bar to generate a DOCX file with all three images.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),
@@ -596,11 +605,11 @@ class _PartIIAState extends State<PartIIA> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      _buildImageUploadSection('ISI'),
+                      _buildImageUploadSection('Existing'),
                       const SizedBox(height: 24),
-                      _buildImageUploadSection('ISII'),
+                      _buildImageUploadSection('Proposed'),
                       const SizedBox(height: 24),
-                      _buildImageUploadSection('ISIII'),
+                      _buildImageUploadSection('Placement'),
                       const SizedBox(height: 32),
                     ],
                   ),

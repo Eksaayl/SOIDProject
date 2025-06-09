@@ -5,9 +5,13 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_html/flutter_html.dart';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'admin_route_guard.dart';
 import 'services/notification_service.dart';
 import 'utils/user_utils.dart';
+import 'package:file_saver/file_saver.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({Key? key}) : super(key: key);
@@ -83,6 +87,34 @@ class AdminDashboard extends StatelessWidget {
     }
   }
 
+  Future<void> _downloadDocument(BuildContext context, String documentId, String sectionId) async {
+    try {
+      final storage = FirebaseStorage.instance;
+      final ref = storage.ref().child('$documentId/$sectionId/document.docx');
+      final bytes = await ref.getData();
+      if (bytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: '${sectionId}_document.docx',
+            bytes: bytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/${sectionId}_document.docx');
+          await file.writeAsBytes(bytes);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Document downloaded successfully')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error downloading document: $e')),
+      );
+    }
+  }
+
   Future<void> _updateScreeningStatus(BuildContext context, DocumentSnapshot section, bool approved) async {
     try {
       final username = await getCurrentUsername();
@@ -122,7 +154,7 @@ class AdminDashboard extends StatelessWidget {
           .collection('sections')
           .doc(sectionId)
           .update({
-        'finalized': true,
+        'isFinalized': true,
         'finalizedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -178,7 +210,7 @@ class AdminDashboard extends StatelessWidget {
                 final doc = docs[index];
                 final data = doc.data() as Map<String, dynamic>;
                 final sectionName = data['sectionTitle'] as String? ?? 'Unknown Section';
-                final isFinalized = data['finalized'] as bool? ?? false;
+                final isFinalized = data['isFinalized'] as bool? ?? false;
                 return Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
@@ -216,9 +248,9 @@ class AdminDashboard extends StatelessWidget {
                             Row(
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.visibility, color: Color(0xff021e84)),
-                                  onPressed: () => _viewDocument(context, 'document', doc.id),
-                                  tooltip: 'View Document',
+                                  icon: const Icon(Icons.download, color: Color(0xff021e84)),
+                                  onPressed: () => _downloadDocument(context, 'document', doc.id),
+                                  tooltip: 'Download Document',
                                 ),
                               ],
                             ),

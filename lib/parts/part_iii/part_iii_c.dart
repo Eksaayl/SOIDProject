@@ -143,7 +143,7 @@ class _PartIIICState extends State<PartIIIC> {
     }
   }
 
-  Future<void> _saveContent() async {
+  Future<void> _saveContent({bool finalize = false}) async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _saving = true);
@@ -154,7 +154,7 @@ class _PartIIICState extends State<PartIIIC> {
         'createdBy': username,
         'createdAt': FieldValue.serverTimestamp(),
         'lastModified': FieldValue.serverTimestamp(),
-        'screening': _isFinalized,
+        'screening': finalize,
         'content': {
           'docx': _docxBytes != null ? true : false,
         },
@@ -328,7 +328,7 @@ class _PartIIICState extends State<PartIIIC> {
             if (!_isFinalized)
               IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: _saving ? null : _saveContent,
+                onPressed: _saving ? null : () => _saveContent(finalize: false),
                 tooltip: 'Save',
                 color: const Color(0xff021e84),
               ),
@@ -346,8 +346,7 @@ class _PartIIICState extends State<PartIIIC> {
                   'Part III.C - Performance Measurement Framework'
                 );
                 if (confirmed) {
-                  setState(() => _isFinalized = true);
-                  _saveContent();
+                  _saveContent(finalize: true);
                 }
               },
               tooltip: 'Finalize',

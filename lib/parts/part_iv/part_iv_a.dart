@@ -92,14 +92,14 @@ Future<Uint8List> generateDocxBySearchReplace({
   return Uint8List.fromList(out);
 }
 
-class PartIEFormPage extends StatefulWidget {
+class PartIVAFormPage extends StatefulWidget {
   final String documentId;
-  const PartIEFormPage({Key? key, required this.documentId}) : super(key: key);
+  const PartIVAFormPage({Key? key, required this.documentId}) : super(key: key);
   @override
-  _PartIEFormPageState createState() => _PartIEFormPageState();
+  _PartIVAFormPageState createState() => _PartIVAFormPageState();
 }
 
-class _PartIEFormPageState extends State<PartIEFormPage> {
+class _PartIVAFormPageState extends State<PartIVAFormPage> {
   final _formKey = GlobalKey<FormState>();
   Uint8List? _uploadedFileBytes;
   String? _fileName;
@@ -122,7 +122,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         .collection('issp_documents')
         .doc(widget.documentId)
         .collection('sections')
-        .doc('I.E');
+        .doc('IV.A');
 
     _loadData();
   }
@@ -140,7 +140,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.E/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/IV.A/document.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -170,7 +170,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.E/document.docx');
+          final docxRef = _storage.ref().child('${widget.documentId}/IV.A/document.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -199,7 +199,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
     if (_uploadedFileBytes == null) throw Exception('No file to upload');
     
     final storageRef = _storage.ref()
-        .child('${widget.documentId}/I.E/document.docx');
+        .child('${widget.documentId}/IV.A/document.docx');
 
     final uploadTask = storageRef.putData(_uploadedFileBytes!);
     final snapshot = await uploadTask;
@@ -229,7 +229,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         'lastModified': FieldValue.serverTimestamp(),
         'isFinalized': _isFinalized,
         'screening': finalize || _isFinalized,
-        'sectionTitle': 'Part I.E',
+        'sectionTitle': 'Part IV.A',
       };
 
       if (!_isFinalized) {
@@ -241,7 +241,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
       setState(() => _isFinalized = finalize);
 
       if (finalize) {
-        await createSubmissionNotification('Part I.E');
+        await createSubmissionNotification('Part IV.A');
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -261,38 +261,38 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
   }
 
   Future<void> _compileDocx() async {
-    if (_uploadedFileBytes == null) {
+    if (_fileUrl == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No document to compile'))
+        SnackBar(content: Text('Please upload a document first'))
       );
       return;
     }
 
     setState(() => _compiling = true);
     try {
-      final fileName = _fileName ?? 'Part_I_E_Strategic_Concerns.docx';
+      final ref = _storage.refFromURL(_fileUrl!);
+      final bytes = await ref.getData();
+      
+      if (bytes == null) throw Exception('Failed to download file');
+
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: fileName,
-          bytes: _uploadedFileBytes!,
+          name: 'document.docx',
+          bytes: bytes,
+          ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
-        final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/$fileName');
-        await file.writeAsBytes(_uploadedFileBytes!);
-        await FileSaver.instance.saveFile(
-          name: fileName,
-          file: file,
-          mimeType: MimeType.microsoftWord,
+        final dir = await getApplicationDocumentsDirectory();
+        final path = '${dir.path}/document.docx';
+        await File(path).writeAsBytes(bytes);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Compiled to $path'))
         );
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document downloaded successfully'))
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Download error: $e'))
+        SnackBar(content: Text('Compile error: $e'))
       );
     } finally {
       setState(() => _compiling = false);
@@ -306,11 +306,12 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAFC),
       appBar: AppBar(
         title: const Text(
-          'Part I.E - Strategic Concerns for ICT Use',
+          'Part IV.A - Deployment of ICT Equipment and Services',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -342,7 +343,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
               onPressed: _isFinalized ? null : () async {
                 final confirmed = await showFinalizeConfirmation(
                   context,
-                  'Part I.E'
+                  'Part IV.A - Deployment of ICT Equipment and Services'
                 );
                 if (confirmed) {
                   _save(finalize: true);
@@ -362,7 +363,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
                   Icon(Icons.lock, size: 48, color: Colors.grey),
                   SizedBox(height: 12),
                   Text(
-                    'Part I.E - Strategic Concerns for ICT Use has been finalized.',
+                    'Part IV.A - Deployment of ICT Equipment and Services has been finalized.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
@@ -419,7 +420,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
                             ),
                             const SizedBox(height: 16),
                             const Text(
-                              'Please upload a DOCX document for Part I.E. The document should contain all necessary information for this section. You can preview, save, and download the document.',
+                              'Please upload a DOCX document for Part IV.A. The document should contain all necessary information about the deployment of ICT equipment and services. You can preview, save, and download the document.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),

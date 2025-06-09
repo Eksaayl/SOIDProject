@@ -92,7 +92,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
   bool _loading = true;
   bool _saving = false;
   bool _compiling = false;
-  bool _isFinal = false;
+  bool _isFinalized = false;
   String? _fileUrl;
 
   late DocumentReference _sectionRef;
@@ -118,7 +118,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinal = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
+          _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
           _fileUrl = data['fileUrl'] as String?;
         });
 
@@ -198,7 +198,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
       }
 
       await _sectionRef.set(payload, SetOptions(merge: true));
-      setState(() => _isFinal = finalize);
+      setState(() => _isFinalized = finalize);
       
       if (finalize) {
         // Use the centralized notification service
@@ -295,13 +295,13 @@ class _PartICFormPageState extends State<PartICFormPage> {
           else ...[
             IconButton(
               icon: const Icon(Icons.save),
-              onPressed: _isFinal ? null : () => _saveSection(finalize: false),
+              onPressed: _isFinalized ? null : () => _saveSection(finalize: false),
               tooltip: 'Save',
               color: const Color(0xff021e84),
             ),
             IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _isFinal ? null : () async {
+              onPressed: _isFinalized ? null : () async {
                 final confirmed = await showFinalizeConfirmation(
                   context,
                   'Part I.C - The Department/Agency and its Environment (Functional Interface Chart)'
@@ -311,7 +311,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
                 }
               },
               tooltip: 'Finalize',
-              color: _isFinal ? Colors.grey : const Color(0xff021e84),
+              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
             ),
             IconButton(
               icon: const Icon(Icons.file_download),
@@ -322,7 +322,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
           ],
         ],
       ),
-      body: _isFinal
+      body: _isFinalized
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
