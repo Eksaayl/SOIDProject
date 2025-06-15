@@ -36,4 +36,12 @@ Future<void> createFinalizationNotification(String sectionName) async {
     'Section Finalized',
     '$sectionName has been finalized by $username(Admin).',
   );
+}
+
+Future<void> createRejectionNotification(String sectionName, String message) async {
+  final username = await getCurrentUsername();
+  await createNotification(
+    'Section Rejected',
+    '$sectionName has been rejected by $username(Admin).\nReason: $message',
+  );
 } 

@@ -147,7 +147,6 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
     final readBy = data['readBy'] as Map<String, dynamic>? ?? {};
     final expiresAtBy = data['expiresAtBy'] as Map<String, dynamic>? ?? {};
     
-    // Only set expiration if not already read
     if (!readBy.containsKey(_username!)) {
       final now = DateTime.now();
       final expiresAt = now.add(const Duration(hours: 24));
@@ -156,7 +155,6 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
         'expiresAtBy.${_username!}': Timestamp.fromDate(expiresAt),
       });
     } else {
-      // Just update read timestamp if already read
       await doc.reference.update({
         'readBy.${_username!}': FieldValue.serverTimestamp(),
       });

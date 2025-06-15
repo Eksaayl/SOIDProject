@@ -115,7 +115,7 @@ class AdminDashboard extends StatelessWidget {
     }
   }
 
-  Future<void> _updateScreeningStatus(BuildContext context, DocumentSnapshot section, bool approved) async {
+  Future<void> _updateScreeningStatus(BuildContext context, DocumentSnapshot section, bool approved, {String? rejectionMessage}) async {
     try {
       final username = await getCurrentUsername();
       final data = section.data() as Map<String, dynamic>;
@@ -134,7 +134,11 @@ class AdminDashboard extends StatelessWidget {
           'screening': false,
           'screeningDate': FieldValue.serverTimestamp(),
           'screenedBy': username,
+          'rejectionMessage': rejectionMessage ?? '',
         });
+        if (rejectionMessage != null && rejectionMessage.isNotEmpty) {
+          await createRejectionNotification(sectionName, rejectionMessage);
+        }
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Section ${approved ? 'approved' : 'rejected'} successfully')),
@@ -159,6 +163,41 @@ class AdminDashboard extends StatelessWidget {
       });
     } catch (e) {
       print('Error finalizing section: $e');
+    }
+  }
+
+  Future<void> _showRejectionDialog(BuildContext context, DocumentSnapshot section) async {
+    final TextEditingController _controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reject Section'),
+        content: TextField(
+          controller: _controller,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Reason for rejection',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xff021e84),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      await _updateScreeningStatus(context, section, false, rejectionMessage: result);
     }
   }
 
@@ -269,7 +308,7 @@ class AdminDashboard extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             TextButton(
-                              onPressed: () => _updateScreeningStatus(context, doc, false),
+                              onPressed: () => _showRejectionDialog(context, doc),
                               style: TextButton.styleFrom(
                                 foregroundColor: Colors.red,
                               ),

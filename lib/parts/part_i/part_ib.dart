@@ -17,6 +17,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:test_project/main_part.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -161,6 +163,9 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
   final _formKey = GlobalKey<FormState>();
   Uint8List? _orgStructureImage;
   
+  Uint8List? _uploadedDocxBytes;
+  String? _uploadedDocxName;
+  
   late TextEditingController totalEmployeesCtl,
       regionalOfficesCtl,
       provincialOfficesCtl,
@@ -190,10 +195,11 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
 
   late TextEditingController mooeCtl,
       coCtl,
-      totalCtl,
-      nicthsCtl,
-      hsdvCtl,
-      hecsCtl;
+      totalCtl;
+
+  // Other Sources of Funds controllers
+  final List<Map<String, TextEditingController>> otherFundsControllers = [];
+  bool _showOtherFunds = false;
 
   bool _loading = true, _saving = false, _isFinalized = false;
   late DocumentReference _sectionRef;
@@ -204,6 +210,12 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
   bool _compiling = false;
   String? _fileUrl;
   final _storage = FirebaseStorage.instance;
+  bool _isChecked = false;
+
+  late TextEditingController totalProjectCostCtrl;
+  late TextEditingController otrFundCtrl;
+  late TextEditingController otherFundsCtrl;
+  late TextEditingController currDateCtl;
 
   @override
   void initState() {
@@ -216,9 +228,6 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     mooeCtl        = TextEditingController();
     coCtl          = TextEditingController();
     totalCtl       = TextEditingController();
-    nicthsCtl      = TextEditingController();
-    hsdvCtl        = TextEditingController();
-    hecsCtl        = TextEditingController();
 
     totalEmployeesCtl = TextEditingController();
     regionalOfficesCtl = TextEditingController();
@@ -241,6 +250,10 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     foContractualCtl = TextEditingController();
     foTotalCtl = TextEditingController();
 
+    otrFundCtrl = TextEditingController();
+    otherFundsCtrl = TextEditingController();
+    currDateCtl = TextEditingController(text: DateFormat('MMMM dd, yyyy').format(DateTime.now()));
+    
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(widget.documentId)
@@ -294,9 +307,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
           mooeCtl.text           = data['mooe']                  ?? '';
           coCtl.text             = data['co']                    ?? '';
           totalCtl.text          = data['total']                 ?? '';
-          nicthsCtl.text         = data['nicthsProjectCost']     ?? '';
-          hsdvCtl.text           = data['hsdvProjectCost']       ?? '';
-          hecsCtl.text           = data['hecsProjectCost']       ?? '';
+          currDateCtl.text        = data['currDate'] ?? DateFormat('MMMM dd, yyyy').format(DateTime.now());
 
           final orgStructB64 = data['organizationalStructure'] as String?;
           if (orgStructB64 != null) {
@@ -321,34 +332,190 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     }
   }
 
-  Future<void> _saveData({bool finalize = false}) async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_orgStructureImage == null) {
+  Future<void> _pickDocxFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['docx'],
+      );
+      if (result != null) {
+        final file = result.files.first;
+        if (file.bytes != null) {
+          setState(() {
+            _uploadedDocxBytes = file.bytes;
+            _uploadedDocxName = file.name;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('DOCX file selected. Click Save to upload.'))
+          );
+        }
+      }
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please upload an organizational structure image'))
+        SnackBar(content: Text('File pick error: $e'))
+      );
+    }
+  }
+
+  void _addOtherFund() {
+    setState(() {
+      otherFundsControllers.add({
+        'projectName': TextEditingController(),
+        'projectCost': TextEditingController(),
+      });
+    });
+  }
+
+  void _removeOtherFund(int index) {
+    setState(() {
+      otherFundsControllers[index]['projectName']?.dispose();
+      otherFundsControllers[index]['projectCost']?.dispose();
+      otherFundsControllers.removeAt(index);
+    });
+  }
+
+  @override
+  void dispose() {
+    plannerNameCtl.dispose();
+    positionCtl.dispose();
+    unitCtl.dispose();
+    emailCtl.dispose();
+    contactCtl.dispose();
+    mooeCtl.dispose();
+    coCtl.dispose();
+    totalCtl.dispose();
+    totalEmployeesCtl.dispose();
+    regionalOfficesCtl.dispose();
+    provincialOfficesCtl.dispose();
+    otherOfficesCtl.dispose();
+    coPlantilaCtl.dispose();
+    coVacantCtl.dispose();
+    coFilledPlantilaCtl.dispose();
+    coFilledPhysicalCtl.dispose();
+    coCoswsCtl.dispose();
+    coContractualCtl.dispose();
+    coTotalCtl.dispose();
+    foPlantilaCtl.dispose();
+    foVacantCtl.dispose();
+    foFilledPlantilaCtl.dispose();
+    foFilledPhysicalCtl.dispose();
+    foCoswsCtl.dispose();
+    foContractualCtl.dispose();
+    foTotalCtl.dispose();
+    
+    // Dispose other funds controllers
+    for (var controllers in otherFundsControllers) {
+      controllers['projectName']?.dispose();
+      controllers['projectCost']?.dispose();
+    }
+    
+    totalProjectCostCtrl.dispose();
+    otrFundCtrl.dispose();
+    otherFundsCtrl.dispose();
+    currDateCtl.dispose();
+    
+    super.dispose();
+  }
+
+  Future<void> _saveData({bool finalize = false}) async {
+    if (_uploadedDocxBytes == null && !_formKey.currentState!.validate()) return;
+    if (finalize && !_isChecked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please certify the information before finalizing'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
     setState(() => _saving = true);
-    try {
-      final imageRef = _storage.ref().child('${widget.documentId}/I.B/orgStructure.png');
-      await imageRef.putData(_orgStructureImage!);
 
-      final replacements = {
-        'plannerName'           : plannerNameCtl.text.trim(),
-        'plantillaPosition'     : positionCtl.text.trim(),
-        'organizationalUnit'    : unitCtl.text.trim(),
-        'emailAddress'          : emailCtl.text.trim(),
-        'contactNumbers'        : contactCtl.text.trim(),
-        'mooe'                  : mooeCtl.text.trim(),
-        'co'                    : coCtl.text.trim(),
-        'total'                 : totalCtl.text.trim(),
-        'nicthsProjectCost'     : nicthsCtl.text.trim(),
-        'hsdvProjectCost'       : hsdvCtl.text.trim(),
-        'hecsProjectCost'       : hecsCtl.text.trim(),
-        'organizationalStructure': _orgStructureImage != null ? base64Encode(_orgStructureImage!) : '',
-        'modifiedBy': _userId,
+    try {
+      String? docxUrl;
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('${widget.documentId}/I.B/document.docx');
+
+      // Format other funds data
+      String otherFundsText = '';
+      if (_showOtherFunds && otherFundsControllers.isNotEmpty) {
+        otherFundsText = '• Other Sources of Funds:\n';
+        otherFundsText += otherFundsControllers.map((controllers) {
+          final projectName = controllers['projectName']?.text.trim() ?? '';
+          final projectCost = controllers['projectCost']?.text.trim() ?? '';
+          return '  $projectName - Project Cost: PhP ${projectCost}';  // Two spaces for indentation, no bullet
+        }).join('\n');
+      }
+
+      if (_uploadedDocxBytes != null) {
+        await docxRef.putData(_uploadedDocxBytes!, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+        docxUrl = await docxRef.getDownloadURL();
+      } else {
+        final data = {
+          'plannerName': plannerNameCtl.text.trim(),
+          'plantillaPosition': positionCtl.text.trim(),
+          'organizationalUnit': unitCtl.text.trim(),
+          'emailAddress': emailCtl.text.trim(),
+          'contactNumbers': contactCtl.text.trim(),
+          'mooe': mooeCtl.text.trim(),
+          'co': coCtl.text.trim(),
+          'total': totalCtl.text.trim(),
+          'totalEmployees': totalEmployeesCtl.text.trim(),
+          'regionalOffices': regionalOfficesCtl.text.trim(),
+          'provincialOffices': provincialOfficesCtl.text.trim(),
+          'otherOffices': otherOfficesCtl.text.trim(),
+          'coPlantilaPositions': coPlantilaCtl.text.trim(),
+          'coVacant': coVacantCtl.text.trim(),
+          'coFilledPlantilaPositions': coFilledPlantilaCtl.text.trim(),
+          'coFilledPhysicalPositions': coFilledPhysicalCtl.text.trim(),
+          'coCosws': coCoswsCtl.text.trim(),
+          'coContractual': coContractualCtl.text.trim(),
+          'coTotal': coTotalCtl.text.trim(),
+          'foPlantilaPositions': foPlantilaCtl.text.trim(),
+          'foVacant': foVacantCtl.text.trim(),
+          'foFilledPlantilaPositions': foFilledPlantilaCtl.text.trim(),
+          'foFilledPhysicalPositions': foFilledPhysicalCtl.text.trim(),
+          'foCosws': foCoswsCtl.text.trim(),
+          'foContractual': foContractualCtl.text.trim(),
+          'foTotal': foTotalCtl.text.trim(),
+          'otrFund': otherFundsText,
+          'currDate': currDateCtl.text.trim(),
+          'organizationalStructure': _orgStructureImage != null 
+              ? base64Encode(_orgStructureImage!)
+              : null,
+        };
+
+        final url = Uri.parse('http://localhost:8000/generate-ib-docx/');
+        final response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(data),
+        );
+        if (response.statusCode != 200) {
+          throw Exception('Failed to generate DOCX: ${response.statusCode}');
+        }
+        final docxBytes = response.bodyBytes;
+        await docxRef.putData(docxBytes, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+        docxUrl = await docxRef.getDownloadURL();
+      }
+
+      final username = await getCurrentUsername();
+      final otherFunds = otherFundsControllers.map((controllers) {
+        return {
+          'projectName': controllers['projectName']?.text.trim() ?? '',
+          'cost': controllers['projectCost']?.text.trim() ?? '',
+        };
+      }).toList();
+
+      final payload = {
+        'plannerName': plannerNameCtl.text.trim(),
+        'plantillaPosition': positionCtl.text.trim(),
+        'organizationalUnit': unitCtl.text.trim(),
+        'emailAddress': emailCtl.text.trim(),
+        'contactNumbers': contactCtl.text.trim(),
+        'mooe': mooeCtl.text.trim(),
+        'co': coCtl.text.trim(),
+        'total': totalCtl.text.trim(),
         'totalEmployees': totalEmployeesCtl.text.trim(),
         'regionalOffices': regionalOfficesCtl.text.trim(),
         'provincialOffices': provincialOfficesCtl.text.trim(),
@@ -367,48 +534,32 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         'foCosws': foCoswsCtl.text.trim(),
         'foContractual': foContractualCtl.text.trim(),
         'foTotal': foTotalCtl.text.trim(),
-      };
-
-      final docxBytes = await generateDocxWithImage(
-        assetPath: 'assets/templates_b.docx',
-        placeholder: '\${orgStructure}',
-        imageBytes: _orgStructureImage!,
-        replacements: replacements,
-      );
-
-      final docxRef = _storage.ref().child('${widget.documentId}/I.B/document.docx');
-      await docxRef.putData(docxBytes);
-      final docxUrl = await docxRef.getDownloadURL();
-
-      final username = await getCurrentUsername();
-      final doc = await _sectionRef.get();
-      final payload = {
-        ...replacements,
+        'otrFund': otherFundsText,
         'fileUrl': docxUrl,
+        'otherFunds': otherFunds,
+        'otherFundsTotal': otherFundsCtrl.text.trim(),
+        'isCertified': _isChecked,
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part I.B',
       };
-      if (!doc.exists) {
+      if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
         payload['createdBy'] = username;
       }
-
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() {
         _isFinalized = finalize;
-        _fileUrl = docxUrl;
+        _uploadedDocxBytes = null;
+        _uploadedDocxName = null;
       });
-      
       if (finalize) {
         await createSubmissionNotification('Part I.B');
       }
-      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
       );
-      
       if (finalize) {
         Navigator.of(context).pop();
       }
@@ -422,103 +573,36 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
   }
 
   Future<void> _compileDocx() async {
-    if (_orgStructureImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please upload an organizational structure image first'))
-      );
-      return;
-    }
-
     setState(() => _compiling = true);
     try {
-      try {
-        await rootBundle.load('assets/templates_b.docx');
-      } catch (e) {
-        throw Exception('Failed to load template file: $e\nMake sure assets/templates_b.docx exists and is properly included in pubspec.yaml');
-      }
-
-      String formatNumber(String value) {
-        if (value.isEmpty) return '0';
-        try {
-          return NumberFormat('#,##0').format(int.parse(value.replaceAll(',', '')));
-        } catch (e) {
-          return value;
+      final fileName = 'document.docx';
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('${widget.documentId}/I.B/document.docx');
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: docxBytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
         }
-      }
-
-      final replacements = <String,String>{
-        'plannerName'           : plannerNameCtl.text.trim(),
-        'plantillaPosition'     : positionCtl.text.trim(),
-        'organizationalUnit'    : unitCtl.text.trim(),
-        'emailAddress'          : emailCtl.text.trim(),
-        'contactNumbers'        : contactCtl.text.trim(),
-
-        'mooe'                  : formatNumber(mooeCtl.text),
-        'co'                    : formatNumber(coCtl.text),
-        'total'                 : formatNumber(totalCtl.text),
-        'nicthsProjectCost'     : formatNumber(nicthsCtl.text),
-        'hsdvProjectCost'       : formatNumber(hsdvCtl.text),
-        'hecsProjectCost'       : formatNumber(hecsCtl.text),
-        
-        'totalEmployees'        : formatNumber(totalEmployeesCtl.text),
-        'regionalOffices'       : formatNumber(regionalOfficesCtl.text),
-        'provincialOffices'     : formatNumber(provincialOfficesCtl.text),
-        'otherOffices'         : otherOfficesCtl.text.trim(),
-
-        'coPlantilaPositions'   : formatNumber(coPlantilaCtl.text),
-        'coVacant'             : formatNumber(coVacantCtl.text),
-        'coFilledPlantilaPositions': formatNumber(coFilledPlantilaCtl.text),
-        'coFilledPhysicalPositions': formatNumber(coFilledPhysicalCtl.text),
-        'coCosws'              : formatNumber(coCoswsCtl.text),
-        'coContractual'        : formatNumber(coContractualCtl.text),
-        'coTotal'              : formatNumber(coTotalCtl.text),
-
-        'foPlantilaPositions'   : formatNumber(foPlantilaCtl.text),
-        'foVacant'             : formatNumber(foVacantCtl.text),
-        'foFilledPlantilaPositions': formatNumber(foFilledPlantilaCtl.text),
-        'foFilledPhysicalPositions': formatNumber(foFilledPhysicalCtl.text),
-        'foCosws'              : formatNumber(foCoswsCtl.text),
-        'foContractual'        : formatNumber(foContractualCtl.text),
-        'foTotal'              : formatNumber(foTotalCtl.text),
-
-      };
-
-      print('Replacement map:');
-      replacements.forEach((key, value) {
-        print('$key: $value');
-      });
-
-      final bytes = await generateDocxWithImage(
-        assetPath: 'assets/templates_b.docx',
-        placeholder: r'${organizationalStructure}',
-        imageBytes: _orgStructureImage!,
-        replacements: replacements,
-      ).catchError((error) {
-        print('Document generation error: $error');
-        throw Exception('Failed to generate document: $error');
-      });
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: 'document.docx',
-          bytes: bytes,
-          ext: 'docx',
-          mimeType: MimeType.microsoftWord,
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
         );
       } else {
-        final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/document.docx';
-        await File(path).writeAsBytes(bytes);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Compiled to $path')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.')),
+        );
       }
     } catch (e) {
-      print('Error details: $e');  
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(
-            content: Text('Compile error: ${e.toString()}'),
-            duration: Duration(seconds: 5),  
-          ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Download error: ${e.toString()}')),
+      );
     } finally {
       setState(() => _compiling = false);
     }
@@ -665,6 +749,41 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: GestureDetector(
+            onTap: _isFinalized
+                ? null
+                : () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateFormat('MMMM dd, yyyy').parse(currDateCtl.text),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        currDateCtl.text = DateFormat('MMMM dd, yyyy').format(picked);
+                      });
+                    }
+                  },
+            child: AbsorbPointer(
+              absorbing: true,
+              child: TextFormField(
+                controller: currDateCtl,
+                enabled: !_isFinalized,
+                decoration: InputDecoration(
+                  labelText: 'Date',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  suffixIcon: const Icon(Icons.calendar_today),
+                ),
+                validator: (v) => v == null || v.trim().isEmpty ? 'Date is required' : null,
+              ),
+            ),
+          ),
+        ),
         const Text(
           'Personnel Complement',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -808,76 +927,151 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     );
   }
 
-  Widget _buildCentralOfficeSection() {
-    return Column(
-      children: [
-        _buildField('Plantilla', coPlantilaCtl),
-        _buildField('Vacant', coVacantCtl),
-        _buildField('Filled (Plantilla)', coFilledPlantilaCtl),
-        _buildField('Filled (Physical)', coFilledPhysicalCtl),
-        _buildField('COSWS', coCoswsCtl),
-        _buildField('Contractual', coContractualCtl),
-        _buildField('Total', coTotalCtl),
-      ],
-    );
-  }
-
-  Widget _buildFieldOfficeSection() {
-    return Column(
-      children: [
-        _buildField('Plantilla', foPlantilaCtl),
-        _buildField('Vacant', foVacantCtl),
-        _buildField('Filled (Plantilla)', foFilledPlantilaCtl),
-        _buildField('Filled (Physical)', foFilledPhysicalCtl),
-        _buildField('COSWS', foCoswsCtl),
-        _buildField('Contractual', foContractualCtl),
-        _buildField('Total', foTotalCtl),
-      ],
-    );
-  }
-
-  Widget _buildContactInfoSection() {
-    return Column(
-      children: [
-        _buildField('Planner Name', plannerNameCtl),
-        _buildField('Plantilla Position', positionCtl),
-        _buildField('Organizational Unit', unitCtl),
-        _buildField('Email Address', emailCtl),
-        _buildField('Contact Numbers', contactCtl),
-      ],
-    );
-  }
-
-  Widget _buildBudgetSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Project Cost',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF2D3748),
+  Widget buildSectionCard(IconData icon, String title, Widget child) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
-        ),
-        const SizedBox(height: 16),
-        _buildField('MOOE', mooeCtl),
-        _buildField('CO', coCtl),
-        _buildField('Total', totalCtl),
-        const SizedBox(height: 24),
-        const Text(
-          'Project Cost by Service',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF2D3748),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.blue.shade700),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        _buildField('NICTHS Project Cost', nicthsCtl),
-        _buildField('HSDV Project Cost', hsdvCtl),
-        _buildField('HECS Project Cost', hecsCtl),
-      ],
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: child,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOtherFundsSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xff021e84).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet,
+                  color: Color(0xff021e84),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Other Sources of Funds',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3748),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          ...otherFundsControllers.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final controllers = entry.value;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildField('Project Name', controllers['projectName']!),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildField('Cost', controllers['projectCost']!),
+                  ),
+                  if (!_isFinalized) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _removeOtherFund(idx),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }).toList(),
+          if (!_isFinalized)
+            Center(
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.add, color: Colors.white),
+                label: const Text(
+                  'Add Other Fund',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                onPressed: _addOtherFund,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xff021e84),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  elevation: 2,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1021,6 +1215,96 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
                       ),
                       const SizedBox(height: 24),
                       Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.08),
+                              spreadRadius: 2,
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xff021e84).withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.upload_file,
+                                    color: Color(0xff021e84),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'Upload DOCX (optional)',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3748),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'You may upload a DOCX file directly instead of using the form. If you upload a DOCX, it will be saved and used for this section.',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF4A5568),
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: _isFinalized ? null : _pickDocxFile,
+                                  icon: const Icon(Icons.upload_file),
+                                  label: const Text('Upload DOCX'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xff021e84),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                if (_uploadedDocxName != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.07),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.description, color: Color(0xff021e84), size: 20),
+                                        const SizedBox(width: 6),
+                                        Text(_uploadedDocxName!, style: const TextStyle(fontSize: 15, color: Color(0xFF2D3748))),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -1116,9 +1400,37 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
                             _buildField('MOOE', mooeCtl),
                             _buildField('CO', coCtl),
                             _buildField('Total', totalCtl),
-                            _buildField('NICTHS Project Cost', nicthsCtl),
-                            _buildField('HSDV Project Cost', hsdvCtl),
-                            _buildField('HECS Project Cost', hecsCtl),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: _showOtherFunds,
+                                  onChanged: _isFinalized ? null : (value) {
+                                    setState(() {
+                                      _showOtherFunds = value ?? false;
+                                      if (!_showOtherFunds) {
+                                        for (var controllers in otherFundsControllers) {
+                                          controllers['projectName']?.dispose();
+                                          controllers['projectCost']?.dispose();
+                                        }
+                                        otherFundsControllers.clear();
+                                      }
+                                    });
+                                  },
+                                ),
+                                const Text(
+                                  'Include Other Sources of Funds',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Color(0xFF2D3748),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_showOtherFunds) ...[
+                              const SizedBox(height: 16),
+                              _buildOtherFundsSection(),
+                            ],
                           ],
                         ),
                       ),
@@ -1138,7 +1450,6 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
                               offset: const Offset(0, 2),
                             ),
                           ],
-                          border: Border.all(color: Colors.grey.shade200),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1179,21 +1490,5 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
               ),
             ),
     );
-  }
-
-  @override
-  void dispose() {
-    plannerNameCtl.dispose();
-    positionCtl.dispose();
-    unitCtl.dispose();
-    emailCtl.dispose();
-    contactCtl.dispose();
-    mooeCtl.dispose();
-    coCtl.dispose();
-    totalCtl.dispose();
-    nicthsCtl.dispose();
-    hsdvCtl.dispose();
-    hecsCtl.dispose();
-    super.dispose();
   }
 }

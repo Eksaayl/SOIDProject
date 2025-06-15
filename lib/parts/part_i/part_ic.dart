@@ -173,7 +173,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
       await imageRef.putData(_pickedBytes!);
 
       final docxBytes = await generateDocxWithImage(
-        assetPath: 'assets/templates_c.docx',
+        assetPath: 'assets/c.docx',
         placeholder: '\${functionalInterface}',
         imageBytes: _pickedBytes!,
       );
@@ -201,7 +201,6 @@ class _PartICFormPageState extends State<PartICFormPage> {
       setState(() => _isFinalized = finalize);
       
       if (finalize) {
-        // Use the centralized notification service
         await createSubmissionNotification('Part I.C');
       }
 
@@ -232,7 +231,7 @@ class _PartICFormPageState extends State<PartICFormPage> {
     setState(() => _compiling = true);
     try {
       final bytes = await generateDocxWithImage(
-        assetPath: 'assets/templates_c.docx',
+        assetPath: 'assets/c.docx',
         placeholder: '\${functionalInterface}',
         imageBytes: _pickedBytes!,
       );

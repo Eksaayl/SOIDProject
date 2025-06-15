@@ -147,6 +147,7 @@ class _PartIICState extends State<PartIIC> {
   Future<void> _save({bool finalize = false}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
+
     try {
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
@@ -155,11 +156,14 @@ class _PartIICState extends State<PartIIC> {
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part II.C',
+        'isFinalized': _isFinalized,
       };
+
       if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
         payload['createdBy'] = username;
       }
+
       payload['databases'] = dbControllers.map((controllers) {
         return {
           'name_of_database': controllers['name_of_database']!.text,
@@ -172,21 +176,105 @@ class _PartIICState extends State<PartIIC> {
           'owner': controllers['owner']!.text,
         };
       }).toList();
+
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
+
+      try {
+        final databases = dbControllers.map((controllers) {
+          return {
+            'name_of_database': controllers['name_of_database']!.text,
+            'general_contents': controllers['general_contents']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+            'status': controllers['status']!.text,
+            'info_systems_served': controllers['info_systems_served']!.text,
+            'data_archiving': controllers['data_archiving']!.text,
+            'users_internal': controllers['users_internal']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+            'users_external': controllers['users_external']!.text,
+            'owner': controllers['owner']!.text,
+          };
+        }).toList();
+
+        final url = Uri.parse('http://localhost:8000/generate-iic-docx/');
+        final response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(databases),
+        );
+
+        if (response.statusCode == 200) {
+          final bytes = response.bodyBytes;
+          final docxRef = FirebaseStorage.instance
+              .ref()
+              .child('${widget.documentId}/II.C/document.docx');
+          await docxRef.putData(bytes, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+          final docxUrl = await docxRef.getDownloadURL();
+          await _sectionRef.set({'docxUrl': docxUrl}, SetOptions(merge: true));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to generate DOCX: ${response.statusCode}')),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating/uploading DOCX: ' + e.toString())),
+        );
+      }
+
       if (finalize) {
         await createSubmissionNotification('Part II.C');
       }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFinalized ? 'Finalized' : 'Saved (not finalized)'))
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
       );
+      
+      if (finalize) {
+        Navigator.of(context).pop();
+      }
     } catch (e) {
-      print('Error in saveContent: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Save error: $e')),
+        SnackBar(content: Text('Save error: $e'))
       );
     } finally {
       setState(() => _saving = false);
+    }
+  }
+
+  Future<void> generateAndDownloadDocx() async {
+    setState(() => _generating = true);
+    try {
+      final docxRef = FirebaseStorage.instance.ref().child('${widget.documentId}/II.C/document.docx');
+      final bytes = await docxRef.getData();
+      
+      if (bytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No DOCX file found. Please save the form first to generate the document.'))
+        );
+        return;
+      }
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: 'Part_II_C_${widget.documentId}.docx',
+          bytes: bytes,
+          mimeType: MimeType.microsoftWord,
+        );
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final path = '${directory.path}/document.docx';
+        final file = File(path);
+        await file.writeAsBytes(bytes);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('DOCX downloaded successfully'))
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error downloading DOCX: $e'))
+      );
+    } finally {
+      setState(() => _generating = false);
     }
   }
 
@@ -349,67 +437,6 @@ class _PartIICState extends State<PartIIC> {
         ),
       ],
     );
-  }
-
-  Future<void> generateAndDownloadDocx() async {
-    setState(() => _generating = true);
-    List<Map<String, dynamic>> databases = dbControllers.map((controllers) {
-      return {
-        'name_of_database': controllers['name_of_database']!.text,
-        'general_contents': controllers['general_contents']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
-        'status': controllers['status']!.text,
-        'info_systems_served': controllers['info_systems_served']!.text,
-        'data_archiving': controllers['data_archiving']!.text,
-        'users_internal': controllers['users_internal']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
-        'users_external': controllers['users_external']!.text,
-        'owner': controllers['owner']!.text,
-      };
-    }).toList();
-    final url = Uri.parse('http://localhost:8000/generate-iic-docx/');
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(databases),
-      );
-      if (response.statusCode == 200) {
-        final bytes = response.bodyBytes;
-        final fileName = 'document.docx';
-        if (kIsWeb) {
-          await FileSaver.instance.saveFile(
-            name: fileName,
-            bytes: bytes,
-            mimeType: MimeType.microsoftWord,
-          );
-        } else {
-          final directory = await getApplicationDocumentsDirectory();
-          final file = File('${directory.path}/$fileName');
-          await file.writeAsBytes(bytes);
-          final storageRef = FirebaseStorage.instance
-              .ref()
-              .child('${widget.documentId}/II.C/$fileName');
-          final uploadTask = await storageRef.putFile(file);
-          final downloadUrl = await storageRef.getDownloadURL();
-          await _sectionRef.set({
-            'docxUrl': downloadUrl,
-            'docxUploadedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('DOCX uploaded and saved! Download: $downloadUrl')),
-          );
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate DOCX: \\${response.statusCode}')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: \\${e.toString()}')),
-      );
-    } finally {
-      setState(() => _generating = false);
-    }
   }
 
   @override

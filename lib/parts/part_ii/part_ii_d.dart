@@ -24,12 +24,12 @@ Future<Uint8List> generateDocxWithImages({
       Uri.parse('${Config.serverUrl}/generate-docx'),
     );
 
-    final templateBytes = await rootBundle.load('assets/templates_II_d.docx');
+    final templateBytes = await rootBundle.load('assets/II_d.docx');
     request.files.add(
       http.MultipartFile.fromBytes(
         'template',
         templateBytes.buffer.asUint8List(),
-        filename: 'templates_II_d.docx',
+        filename: 'II_d.docx',
       ),
     );
 
@@ -158,10 +158,6 @@ class _PartIIDState extends State<PartIID> {
               _pnlImageBytes = bytes;
             }
           });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Image uploaded successfully'))
-          );
         }
       }
     } catch (e) {
@@ -210,6 +206,7 @@ class _PartIIDState extends State<PartIID> {
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part II.D',
+        'isFinalized': _isFinalized,
       };
 
       if (!_isFinalized) {
@@ -220,8 +217,39 @@ class _PartIIDState extends State<PartIID> {
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
 
+      if (_nlcImageBytes != null && _pnlImageBytes != null) {
+        try {
+          final bytes = await generateDocxWithImages(
+            images: {
+              'NLC': _nlcImageBytes!,
+              'PNL': _pnlImageBytes!,
+            },
+          );
+          final docxRef = _storage.ref().child('${widget.documentId}/II.D/document.docx');
+          await docxRef.putData(bytes, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+          final docxUrl = await docxRef.getDownloadURL();
+          await _sectionRef.set({'docxUrl': docxUrl}, SetOptions(merge: true));
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error generating/uploading DOCX: ' + e.toString())),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX not generated: Please upload both images (NLC and PNL)')),
+        );
+      }
+
       if (finalize) {
         await createSubmissionNotification('Part II.D');
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
+      );
+      
+      if (finalize) {
+        Navigator.of(context).pop();
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -230,31 +258,20 @@ class _PartIIDState extends State<PartIID> {
     } finally {
       setState(() => _saving = false);
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-    );
   }
 
   Future<void> _compileDocx() async {
-    if (_nlcImageBytes == null || _pnlImageBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select both images'))
-      );
-      return;
-    }
-
     setState(() => _compiling = true);
     try {
-      final bytes = await generateDocxWithImages(
-        images: {
-          'NLC': _nlcImageBytes!,
-          'PNL': _pnlImageBytes!,
-        },
-      );
-
       final docxRef = _storage.ref().child('${widget.documentId}/II.D/document.docx');
-      await docxRef.putData(bytes);
+      final bytes = await docxRef.getData();
+      
+      if (bytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No DOCX file found. Please save the form first to generate the document.'))
+        );
+        return;
+      }
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
@@ -270,11 +287,11 @@ class _PartIIDState extends State<PartIID> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document generated and downloaded successfully'))
+        const SnackBar(content: Text('DOCX downloaded successfully'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating document: $e'))
+        SnackBar(content: Text('Error downloading DOCX: $e'))
       );
     } finally {
       setState(() => _compiling = false);

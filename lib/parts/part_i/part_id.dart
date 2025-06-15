@@ -299,6 +299,38 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     }
   }
 
+  Future<void> _downloadTemplate() async {
+    try {
+      final storage = FirebaseStorage.instance;
+      final ref = storage.ref().child('document/I.D/d.docx');
+      final bytes = await ref.getData();
+      if (bytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: 'Part_I.D_Template.docx',
+            bytes: bytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final dir = await getApplicationDocumentsDirectory();
+          final path = '${dir.path}/Part_I.D_Template.docx';
+          await File(path).writeAsBytes(bytes);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Template downloaded to $path')),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Template not found in storage.')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error downloading template: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -426,6 +458,25 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
                                 color: Color(0xFF4A5568),
                                 height: 1.5,
                               ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: _downloadTemplate,
+                                  icon: const Icon(Icons.download),
+                                  label: const Text('Download Part I.D Template'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Color(0xff021e84),
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),

@@ -15,6 +15,7 @@ import 'package:test_project/main_part.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -73,9 +74,8 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
   late TextEditingController legalBasisCtrl;
   late TextEditingController visionCtrl;
   late TextEditingController missionCtrl;
-  late TextEditingController pillar1Ctrl;
-  late TextEditingController pillar2Ctrl;
-  late TextEditingController pillar3Ctrl;
+  late TextEditingController frameworkCtrl;
+  final List<TextEditingController> pillarControllers = [];
 
   bool _loading = true;
   bool _saving = false;
@@ -83,6 +83,9 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
   bool _isFinal = false;
 
   late DocumentReference _sectionRef;
+
+  Uint8List? _uploadedDocxBytes;
+  String? _uploadedDocxName;
 
   void _addNewFunctionEditor() {
     functionControllers.add(QuillController.basic());
@@ -104,9 +107,10 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     legalBasisCtrl = TextEditingController();
     visionCtrl = TextEditingController();
     missionCtrl = TextEditingController();
-    pillar1Ctrl = TextEditingController();
-    pillar2Ctrl = TextEditingController();
-    pillar3Ctrl = TextEditingController();
+    frameworkCtrl = TextEditingController();
+    for (int i = 0; i < 1; i++) {
+      pillarControllers.add(TextEditingController());
+    }
 
     _addNewFunctionEditor();
 
@@ -126,6 +130,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
 
       docNameCtrl.text = data['documentName'] ?? '';
       legalBasisCtrl.text = data['legalBasis'] ?? '';
+      frameworkCtrl.text = data['framework'] ?? '';
       
       for (var controller in functionControllers) {
         controller.dispose();
@@ -151,9 +156,6 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
 
       visionCtrl.text = data['visionStatement'] ?? '';
       missionCtrl.text = data['missionStatement'] ?? '';
-      pillar1Ctrl.text = data['pillar1'] ?? '';
-      pillar2Ctrl.text = data['pillar2'] ?? '';
-      pillar3Ctrl.text = data['pillar3'] ?? '';
       setState(() {
         _isFinal = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
       });
@@ -164,76 +166,105 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     }
   }
 
+  Future<void> _pickDocxFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['docx'],
+      );
+      if (result != null) {
+        final file = result.files.first;
+        if (file.bytes != null) {
+          setState(() {
+            _uploadedDocxBytes = file.bytes;
+            _uploadedDocxName = file.name;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('DOCX file selected. Click Save to upload.'))
+          );
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('File pick error: $e'))
+      );
+    }
+  }
+
   Future<void> _save({bool finalize = false}) async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_uploadedDocxBytes == null && !_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
     try {
-      // Extract bullet list from Quill controllers
-      List<String> functions = functionControllers
-          .map((controller) => controller.document.toPlainText().trim())
-          .where((text) => text.isNotEmpty)
-          .toList();
-
-      final data = {
-        'documentName': docNameCtrl.text.trim(),
-        'legalBasis': legalBasisCtrl.text.trim(),
-        'functions': functions,
-        'visionStatement': visionCtrl.text.trim(),
-        'missionStatement': missionCtrl.text.trim(),
-        'pillar1': pillar1Ctrl.text.trim(),
-        'pillar2': pillar2Ctrl.text.trim(),
-        'pillar3': pillar3Ctrl.text.trim(),
-      };
-
-      // Generate DOCX using the backend endpoint
-      final url = Uri.parse('http://localhost:8000/generate-ia-docx/');
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(data),
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to generate DOCX: ${response.statusCode}');
-      }
-
-      final docxBytes = response.bodyBytes;
-
+      String? docxUrl;
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('${widget.documentId}/I.A/document.docx');
-      await docxRef.putData(docxBytes);
-      final docxUrl = await docxRef.getDownloadURL();
+      if (_uploadedDocxBytes != null) {
+        await docxRef.putData(_uploadedDocxBytes!, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+        docxUrl = await docxRef.getDownloadURL();
+      } else {
+        final data = {
+          'documentName': docNameCtrl.text.trim(),
+          'legalBasis': legalBasisCtrl.text.trim(),
+          'visionStatement': visionCtrl.text.trim(),
+          'missionStatement': missionCtrl.text.trim(),
+          'framework': frameworkCtrl.text.trim(),
+          'pillar': pillarControllers
+              .asMap()
+              .entries
+              .map((entry) => 'Pillar ${entry.key + 1}: ${entry.value.text.trim()}')
+              .where((text) => text.isNotEmpty)
+              .join('\n'),
+        };
+        final url = Uri.parse('http://localhost:8000/generate-ia-docx/');
+        final response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(data),
+        );
+        if (response.statusCode != 200) {
+          throw Exception('Failed to generate DOCX: ${response.statusCode}');
+        }
+        final docxBytes = response.bodyBytes;
+        await docxRef.putData(docxBytes, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+        docxUrl = await docxRef.getDownloadURL();
+      }
 
       final username = await getCurrentUsername();
       final payload = {
-        ...data,
-        'functions': jsonEncode(
-          functionControllers.map((ctrl) => ctrl.document.toDelta().toJson()).toList()
-        ),
+        'documentName': docNameCtrl.text.trim(),
+        'legalBasis': legalBasisCtrl.text.trim(),
+        'framework': frameworkCtrl.text.trim(),
+        'visionStatement': visionCtrl.text.trim(),
+        'missionStatement': missionCtrl.text.trim(),
+        'pillar': pillarControllers
+            .asMap()
+            .entries
+            .map((entry) => 'Pillar ${entry.key + 1}: ${entry.value.text.trim()}')
+            .where((text) => text.isNotEmpty)
+            .join('\n'),
         'fileUrl': docxUrl,
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinal,
         'sectionTitle': 'Part I.A',
       };
-
       if (!_isFinal) {
         payload['createdAt'] = FieldValue.serverTimestamp();
         payload['createdBy'] = username;
       }
-
       await _sectionRef.set(payload, SetOptions(merge: true));
-      setState(() => _isFinal = finalize);
-      
+      setState(() {
+        _isFinal = finalize;
+        _uploadedDocxBytes = null;
+        _uploadedDocxName = null;
+      });
       if (finalize) {
         await createSubmissionNotification('Part I.A');
       }
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
       );
-      
       if (finalize) {
         Navigator.of(context).pop();
       }
@@ -266,13 +297,16 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
         'functions': sb.toString().trim(),
         'visionStatement': visionCtrl.text.trim(),
         'missionStatement': missionCtrl.text.trim(),
-        'pillar1': pillar1Ctrl.text.trim(),
-        'pillar2': pillar2Ctrl.text.trim(),
-        'pillar3': pillar3Ctrl.text.trim(),
+        'pillar': pillarControllers
+            .asMap()
+            .entries
+            .map((entry) => 'Pillar ${entry.key + 1}: ${entry.value.text.trim()}')
+            .where((text) => text.isNotEmpty)
+            .join('\n'),
       };
 
       final bytes = await generateDocxBySearchReplace(
-        assetPath: 'assets/templates.docx',
+        assetPath: 'assets/a.docx',
         replacements: map,
       );
 
@@ -303,23 +337,61 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
   Future<void> generateAndDownloadDocx() async {
     setState(() => _compiling = true);
     try {
-      // Extract bullet list from Quill controllers
+      final fileName = 'document.docx';
+      if (_uploadedDocxBytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: _uploadedDocxBytes!,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(_uploadedDocxBytes!);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX downloaded (from uploaded file, not yet saved)!')),
+        );
+        return;
+      }
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('${widget.documentId}/I.A/document.docx');
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: docxBytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
+        );
+        return;
+      }
       List<String> functions = functionControllers
           .map((controller) => controller.document.toPlainText().trim())
           .where((text) => text.isNotEmpty)
           .toList();
-
       final data = {
         'documentName': docNameCtrl.text.trim(),
         'legalBasis': legalBasisCtrl.text.trim(),
         'functions': functions,
         'visionStatement': visionCtrl.text.trim(),
         'missionStatement': missionCtrl.text.trim(),
-        'pillar1': pillar1Ctrl.text.trim(),
-        'pillar2': pillar2Ctrl.text.trim(),
-        'pillar3': pillar3Ctrl.text.trim(),
+        'pillar': pillarControllers
+            .asMap()
+            .entries
+            .map((entry) => 'Pillar ${entry.key + 1}: ${entry.value.text.trim()}')
+            .where((text) => text.isNotEmpty)
+            .join('\n'),
       };
-
       final url = Uri.parse('http://localhost:8000/generate-ia-docx/');
       final response = await http.post(
         url,
@@ -328,7 +400,6 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
       );
       if (response.statusCode == 200) {
         final bytes = response.bodyBytes;
-        final fileName = 'document.docx';
         if (kIsWeb) {
           await FileSaver.instance.saveFile(
             name: fileName,
@@ -341,16 +412,16 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
           await file.writeAsBytes(bytes);
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('DOCX generated and saved!')),
+          const SnackBar(content: Text('DOCX generated from form and downloaded!')),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate DOCX: \\${response.statusCode}')),
+          SnackBar(content: Text('Failed to generate DOCX: ${response.statusCode}')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: \\${e.toString()}')),
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
     } finally {
       setState(() => _compiling = false);
@@ -483,7 +554,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
                             ),
                             const SizedBox(height: 16),
                             const Text(
-                              'Please fill in all the required fields below. You can add multiple functions as needed. Make sure all information is accurate and complete before finalizing.',
+                              'Please fill in all the required fields below. You can add multiple functions as needed. Alternatively, you may upload a DOCX file directly instead of using the form. Make sure all information is accurate and complete before finalizing. If you upload a DOCX, it will be saved and used for this section.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),
@@ -493,15 +564,16 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
                       Container(
-                        padding: const EdgeInsets.all(20),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(15),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
+                              color: Colors.grey.withOpacity(0.08),
                               spreadRadius: 2,
                               blurRadius: 8,
                               offset: const Offset(0, 2),
@@ -517,17 +589,17 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
+                                    color: const Color(0xff021e84).withOpacity(0.08),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: const Icon(
-                                    Icons.description,
+                                    Icons.upload_file,
                                     color: Color(0xff021e84),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 const Text(
-                                  'Basic Information',
+                                  'Upload DOCX (optional)',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -536,158 +608,81 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 20),
-                            _buildField('Document Name', docNameCtrl),
-                            _buildField('Legal Basis', legalBasisCtrl, multiline: true),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'You may upload a DOCX file directly instead of using the form. If you upload a DOCX, it will be saved and used for this section.',
+                              style: TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF4A5568),
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: _isFinal ? null : _pickDocxFile,
+                                  icon: const Icon(Icons.upload_file),
+                                  label: const Text('Upload DOCX'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xff021e84),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                if (_uploadedDocxName != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.07),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.description, color: Color(0xff021e84), size: 20),
+                                        const SizedBox(width: 6),
+                                        Text(_uploadedDocxName!, style: const TextStyle(fontSize: 15, color: Color(0xFF2D3748))),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.list_alt,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Functions',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            _buildFunctionsSection(),
-                          ],
-                        ),
+                      buildSectionCard(
+                        icon: Icons.gavel,
+                        title: 'Legal Basis',
+                        child: _buildField('Legal Basis', legalBasisCtrl, multiline: true),
                       ),
                       const SizedBox(height: 24),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
+                      buildSectionCard(
+                        icon: Icons.visibility,
+                        title: 'Vision and Mission',
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.visibility,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Vision and Mission',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
                             _buildField('Vision Statement', visionCtrl, multiline: true),
                             _buildField('Mission Statement', missionCtrl, multiline: true),
                           ],
                         ),
                       ),
                       const SizedBox(height: 24),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.architecture,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Strategic Pillars',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            _buildField('Pillar 1', pillar1Ctrl, multiline: true),
-                            _buildField('Pillar 2', pillar2Ctrl, multiline: true),
-                            _buildField('Pillar 3', pillar3Ctrl, multiline: true),
-                          ],
-                        ),
+                      buildSectionCard(
+                        icon: Icons.architecture,
+                        title: 'Framework',
+                        child: _buildField('Framework', frameworkCtrl, multiline: true),
+                      ),
+                      const SizedBox(height: 24),
+                      buildSectionCard(
+                        icon: Icons.architecture,
+                        title: 'Pillars',
+                        child: _buildPillarSection(),
                       ),
                     ],
                   ),
@@ -725,73 +720,59 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     );
   }
 
-  Widget _buildFunctionsSection() {
+  Widget _buildPillarSection() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ...functionControllers.asMap().entries.map((entry) {
-          final index = entry.key;
-          final controller = entry.value;
-          
-          return Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade200),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          'Function ${index + 1}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF2D3748),
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (!_isFinal && functionControllers.length > 1)
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _removeFunctionEditor(index),
-                      ),
-                  ],
+        ...pillarControllers.asMap().entries.map((entry) {
+          final idx = entry.key;
+          final ctrl = entry.value;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: TextFormField(
+              controller: ctrl,
+              enabled: !_isFinal,
+              maxLines: null,
+              decoration: InputDecoration(
+                labelText: 'Pillar ${idx + 1}',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-                Container(
-                  height: 100,
-                  padding: const EdgeInsets.all(8),
-                  child: QuillEditor.basic(
-                    controller: controller,
-                  ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-              ],
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xff021e84)),
+                ),
+                labelStyle: const TextStyle(color: Color(0xFF4A5568)),
+              ),
+              validator: (v) => v == null || v.trim().isEmpty ? 'Pillar ${idx + 1} is required' : null,
             ),
           );
-        }).toList(),
+        }),
         if (!_isFinal)
           Center(
             child: ElevatedButton.icon(
               icon: const Icon(Icons.add, color: Colors.white),
               label: const Text(
-                'Add Function',
+                'Add Pillar',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
+                  color: Colors.white,
                 ),
               ),
-              onPressed: _addNewFunctionEditor,
+              onPressed: () {
+                setState(() {
+                  pillarControllers.add(TextEditingController());
+                });
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xff021e84),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -812,10 +793,62 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     }
     visionCtrl.dispose();
     missionCtrl.dispose();
-    pillar1Ctrl.dispose();
-    pillar2Ctrl.dispose();
-    pillar3Ctrl.dispose();
+    frameworkCtrl.dispose();
+    for (var ctrl in pillarControllers) {
+      ctrl.dispose();
+    }
     super.dispose();
+  }
+
+  Widget buildSectionCard({
+    required IconData icon,
+    required String title,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xff021e84).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: const Color(0xff021e84)),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3748),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          child,
+        ],
+      ),
+    );
   }
 }
 

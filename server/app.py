@@ -7,7 +7,7 @@ from datetime import datetime
 from docxcompose.composer import Composer
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app) 
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -20,11 +20,9 @@ def merge_docs():
         if not files:
             return jsonify({"error": "No files provided"}), 400
 
-        # Use the first file as the base document
         base_doc = Document(files[0])
         composer = Composer(base_doc)
 
-        # Append the rest
         for file in files[1:]:
             doc = Document(file)
             composer.append(doc)

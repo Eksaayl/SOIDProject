@@ -1,19 +1,30 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+import os
+import io
+import base64
+import tempfile
+import logging
+import traceback
+from typing import List, Dict, Any
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from docx import Document
 from docxcompose.composer import Composer
-import io
-import os
-from typing import List
-from datetime import datetime
-import uvicorn
 from docx.shared import Inches
-import tempfile
+import uvicorn
 import uuid
 from server.tables import create_iii_b_docx, create_iii_a_docx
 import argparse
 import mammoth
+from server.part_ib_handler import generate_part_ib_docx, process_part_ib_data
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -80,10 +91,8 @@ def insert_bullet_list_at_placeholder(doc_path, output_path, placeholder, items)
         if placeholder in para.text:
             parent = para._element.getparent()
             idx = list(parent).index(para._element)
-            # Remove the placeholder paragraph
             p = para._element
             p.getparent().remove(p)
-            # Insert bullet list at this position
             for item in items:
                 new_para = doc.add_paragraph(item, style='List Bullet')
                 parent.insert(idx, new_para._element)
@@ -116,21 +125,21 @@ async def generate_docx_II_a(template_file, images):
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
                     run = paragraph.add_run()
-                    run.add_picture(img_stream, width=Inches(6))
+                    run.add_picture(img_stream, width=Inches(8.52), height=Inches(5.69))
             elif '{ISII}' in paragraph.text:
                 if image_map['ISII']:
                     img_content = await image_map['ISII'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
                     run = paragraph.add_run()
-                    run.add_picture(img_stream, width=Inches(6))
+                    run.add_picture(img_stream, width=Inches(8.52), height=Inches(5.69))
             elif '{ISIII}' in paragraph.text:
                 if image_map['ISIII']:
                     img_content = await image_map['ISIII'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
                     run = paragraph.add_run()
-                    run.add_picture(img_stream, width=Inches(6))
+                    run.add_picture(img_stream, width=Inches(8.52), height=Inches(5.69))
         
         docx_bytes = io.BytesIO()
         doc.save(docx_bytes)
@@ -142,7 +151,7 @@ async def generate_docx_II_a(template_file, images):
 
 async def generate_docx_II_d(template_file, images):
     try:
-        doc = Document(template_file)
+        doc = Document(r'C:/Users/User/Documents/SOIDProject/assets/II_d.docx')
         sorted_images = sorted(images, key=lambda x: x.filename)
         image_map = {
             'NLC': None,
@@ -251,11 +260,11 @@ async def generate_docx(
             raise HTTPException(status_code=400, detail="At least one image is required")
         
         try:
-            if "templates_II_a.docx" in template.filename:
+            if "II_a.docx" in template.filename:
                 if len(images) != 3:
                     raise HTTPException(status_code=400, detail="Part II.A requires exactly 3 images")
                 docx_bytes = await generate_docx_II_a(template_file, images)
-            elif "templates_II_d.docx" in template.filename:
+            elif "II_d.docx" in template.filename:
                 if len(images) != 2:
                     raise HTTPException(status_code=400, detail="Part II.D requires exactly 2 images")
                 docx_bytes = await generate_docx_II_d(template_file, images)
@@ -268,7 +277,9 @@ async def generate_docx(
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to generate document: {str(e)}")
+            print("Exception in /generate-docx:", e)
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
         
         if "templates_IV_b.docx" in template.filename:
             return StreamingResponse(
@@ -284,6 +295,8 @@ async def generate_docx(
     except HTTPException:
         raise
     except Exception as e:
+        print("Exception in /generate-docx:", e)
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
     finally:
         if template_file and os.path.exists(template_file):
@@ -436,7 +449,6 @@ async def merge_documents_part_iii(
     part_iii_c: UploadFile = File(...),
 ):
     try:
-        # Read uploaded files
         try:
             iii_a_bytes = io.BytesIO(await part_iii_a.read())
             iii_b_bytes = io.BytesIO(await part_iii_b.read())
@@ -444,7 +456,6 @@ async def merge_documents_part_iii(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to read uploaded files: {str(e)}")
 
-        # Parse DOCX files
         try:
             iii_a_doc = Document(iii_a_bytes)
             iii_b_doc = Document(iii_b_bytes)
@@ -452,7 +463,6 @@ async def merge_documents_part_iii(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to parse DOCX files: {str(e)}")
 
-        # Optionally add page breaks between docs
         def add_page_break(doc):
             try:
                 p = doc.add_paragraph()
@@ -467,7 +477,6 @@ async def merge_documents_part_iii(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to add page breaks: {str(e)}")
 
-        # Merge documents
         try:
             composer = Composer(iii_a_doc)
             composer.append(iii_b_doc)
@@ -475,7 +484,6 @@ async def merge_documents_part_iii(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to merge documents: {str(e)}")
 
-        # Save merged document to bytes
         try:
             output = io.BytesIO()
             composer.save(output)
@@ -499,21 +507,18 @@ async def merge_documents_part_iv(
     part_iv_b: UploadFile = File(...),
 ):
     try:
-        # Read uploaded files
         try:
             iv_a_bytes = io.BytesIO(await part_iv_a.read())
             iv_b_bytes = io.BytesIO(await part_iv_b.read())
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to read uploaded files: {str(e)}")
 
-        # Parse DOCX files
         try:
             iv_a_doc = Document(iv_a_bytes)
             iv_b_doc = Document(iv_b_bytes)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to parse DOCX files: {str(e)}")
 
-        # Add page break between docs
         def add_page_break(doc):
             try:
                 p = doc.add_paragraph()
@@ -527,14 +532,12 @@ async def merge_documents_part_iv(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to add page breaks: {str(e)}")
 
-        # Merge documents
         try:
             composer = Composer(iv_a_doc)
             composer.append(iv_b_doc)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to merge documents: {str(e)}")
 
-        # Save merged document to bytes
         try:
             output = io.BytesIO()
             composer.save(output)
@@ -555,22 +558,20 @@ async def merge_documents_part_iv(
 @app.post("/generate-ia-docx/")
 async def generate_ia_docx_endpoint(request: Request):
     data = await request.json()
-    functions = data.get('functions', [])
     replacements = {
         "${documentName}": data.get('documentName', ''),
         "${legalBasis}": data.get('legalBasis', ''),
         "${visionStatement}": data.get('visionStatement', ''),
         "${missionStatement}": data.get('missionStatement', ''),
-        "${pillar1}": data.get('pillar1', ''),
-        "${pillar2}": data.get('pillar2', ''),
-        "${pillar3}": data.get('pillar3', ''),
+        "${framework}": data.get('framework', ''),
+        "${pillar}": data.get('pillar', ''),
     }
     import tempfile, uuid, os
     temp_dir = tempfile.gettempdir()
     filename = f"ia_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
-    template_path = 'assets/templates.docx'
-    fill_placeholders_and_bullets(template_path, output_path, replacements, functions)
+    template_path = 'assets/a.docx'
+    fill_placeholders_and_bullets(template_path, output_path, replacements)
     from fastapi.responses import FileResponse
     return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     
@@ -636,26 +637,73 @@ async def convert_docx(file: UploadFile = File(...)):
 async def root():
     return {"message": "Document Merge Server is running"}
 
-def fill_placeholders_and_bullets(template_path, output_path, replacements, functions):
+def fill_placeholders_and_bullets(template_path, output_path, replacements):
     from docx import Document
     doc = Document(template_path)
-    # Replace all text placeholders except functions
     for para in doc.paragraphs:
         for ph, val in replacements.items():
             if ph in para.text:
                 para.text = para.text.replace(ph, val)
-    # Replace bullet list placeholder
-    for i, para in enumerate(doc.paragraphs):
-        if "${functions}" in para.text:
-            parent = para._element.getparent()
-            idx = list(parent).index(para._element)
-            para._element.getparent().remove(para._element)
-            for item in functions:
-                new_para = doc.add_paragraph(item, style='List Bullet')
-                parent.insert(idx, new_para._element)
-                idx += 1
-            break
+    
+    for para in doc.paragraphs:
+        replace_placeholder_in_paragraph(para, "${pillar}", replacements.get("${pillar}", ""))
+    
     doc.save(output_path)
+
+def replace_placeholder_in_paragraph(para, placeholder, replacement):
+    full_text = ''.join(run.text for run in para.runs)
+    if placeholder in full_text:
+        new_text = full_text.replace(placeholder, replacement)
+        for run in para.runs:
+            run.text = ''
+        if para.runs:
+            para.runs[0].text = new_text
+        else:
+            para.add_run(new_text)
+
+@app.post("/generate-ib-docx/")
+async def generate_ib_docx_endpoint(request: Request):
+    try:
+        data = await request.json()
+        logger.debug(f"Received data: {data}")
+        
+        # Get current date if not provided
+        current_date = data.get('currDate', '')
+        if not current_date:
+            current_date = datetime.now().strftime('%B %d, %Y')
+        data['currDate'] = current_date
+        
+        processed_data = process_part_ib_data(data)
+        logger.debug(f"Processed data: {processed_data}")
+        
+        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'b.docx')
+        logger.debug(f"Looking for template at: {template_path}")
+        
+        if not os.path.exists(template_path):
+            error_msg = f"Template file not found at {template_path}"
+            logger.error(error_msg)
+            raise HTTPException(status_code=404, detail=error_msg)
+
+        # Generate the document
+        try:
+            docx_bytes = generate_part_ib_docx(processed_data, template_path)
+            logger.debug("Document generated successfully")
+        except Exception as e:
+            logger.error(f"Error generating document: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"Error generating document: {str(e)}")
+        
+        return StreamingResponse(
+            io.BytesIO(docx_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": "attachment; filename=part_ib.docx"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in generate_ib_docx_endpoint: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -15,7 +15,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailCtrl = TextEditingController();
+  final _identifierCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -23,7 +23,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
-    _emailCtrl.dispose();
+    _identifierCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
   }
@@ -32,8 +32,30 @@ class _LoginPageState extends State<LoginPage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
+      final identifier = _identifierCtrl.text.trim();
+      String email;
+
+      if (identifier.contains('@')) {
+        email = identifier;
+      } else {
+        final userQuery = await _firestore
+            .collection('users')
+            .where('username', isEqualTo: identifier)
+            .get();
+
+        if (userQuery.docs.isEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Username not found')),
+          );
+          setState(() => _isLoading = false);
+          return;
+        }
+        email = userQuery.docs.first['email'] as String;
+      }
+
       await _auth.signInWithEmailAndPassword(
-        email: _emailCtrl.text.trim(),
+        email: email,
         password: _passCtrl.text,
       );
       if (!mounted) return;
@@ -55,15 +77,33 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _sendPasswordResetEmail() async {
-    String email = _emailCtrl.text.trim();
-    if (email.isEmpty) {
+    String identifier = _identifierCtrl.text.trim();
+    if (identifier.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your email')),
+        const SnackBar(content: Text('Please enter your email or username')),
       );
       return;
     }
 
     try {
+      String email;
+      if (identifier.contains('@')) {
+        email = identifier;
+      } else {
+        final userQuery = await _firestore
+            .collection('users')
+            .where('username', isEqualTo: identifier)
+            .get();
+
+        if (userQuery.docs.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Username not found')),
+          );
+          return;
+        }
+        email = userQuery.docs.first['email'] as String;
+      }
+
       await _auth.sendPasswordResetEmail(email: email);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Password reset email sent')),
@@ -164,14 +204,13 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 40),
                   TextFormField(
-                    controller: _emailCtrl,
+                    controller: _identifierCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email),
+                      labelText: 'Email or Username',
+                      prefixIcon: Icon(Icons.person),
                     ),
-                    keyboardType: TextInputType.emailAddress,
                     validator: (v) =>
-                    v == null || v.isEmpty ? 'Enter your email' : null,
+                        v == null || v.isEmpty ? 'Enter your email or username' : null,
                   ),
                   const SizedBox(height: 20),
                   TextFormField(
@@ -182,7 +221,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     obscureText: true,
                     validator: (v) =>
-                    v == null || v.isEmpty ? 'Enter your password' : null,
+                        v == null || v.isEmpty ? 'Enter your password' : null,
                   ),
                   Align(
                     alignment: Alignment.centerRight,

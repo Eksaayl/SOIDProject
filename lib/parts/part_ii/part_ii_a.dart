@@ -34,12 +34,12 @@ Future<Uint8List> generateDocxWithImages({
       Uri.parse('${Config.serverUrl}/generate-docx'),
     );
 
-    final templateBytes = await rootBundle.load('assets/templates_II_a.docx');
+    final templateBytes = await rootBundle.load('assets/II_a.docx');
     request.files.add(
       http.MultipartFile.fromBytes(
         'template',
         templateBytes.buffer.asUint8List(),
-        filename: 'templates_II_a.docx',
+        filename: 'II_a.docx',
       ),
     );
 
@@ -189,10 +189,6 @@ class _PartIIAState extends State<PartIIA> {
                 break;
             }
           });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Image uploaded successfully'))
-          );
         }
       }
     } catch (e) {
@@ -254,6 +250,30 @@ class _PartIIAState extends State<PartIIA> {
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
 
+      if (_isiBytes != null && _isiiBytes != null && _isiiiBytes != null) {
+        try {
+          final bytes = await generateDocxWithImages(
+            images: {
+              'ISI': _isiBytes!,
+              'ISII': _isiiBytes!,
+              'ISIII': _isiiiBytes!,
+            },
+          );
+          final docxRef = _storage.ref().child('${widget.documentId}/II.A/document.docx');
+          await docxRef.putData(bytes, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+          final docxUrl = await docxRef.getDownloadURL();
+          await _sectionRef.set({'docxUrl': docxUrl}, SetOptions(merge: true));
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error generating/uploading DOCX: ' + e.toString())),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX not generated: Please upload all three images (ISI, ISII, ISIII)')),
+        );
+      }
+
       if (finalize) {
         await createSubmissionNotification('Part II.A');
       }
@@ -275,22 +295,17 @@ class _PartIIAState extends State<PartIIA> {
   }
 
   Future<void> _compileDocx() async {
-    if (_isiBytes == null || _isiiBytes == null || _isiiiBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select all three images'))
-      );
-      return;
-    }
-
     setState(() => _compiling = true);
     try {
-      final bytes = await generateDocxWithImages(
-        images: {
-          'ISI': _isiBytes!,
-          'ISII': _isiiBytes!,
-          'ISIII': _isiiiBytes!,
-        },
-      );
+      final docxRef = _storage.ref().child('${widget.documentId}/II.A/document.docx');
+      final bytes = await docxRef.getData();
+      
+      if (bytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No DOCX file found. Please save the form first to generate the document.'))
+        );
+        return;
+      }
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
@@ -306,11 +321,11 @@ class _PartIIAState extends State<PartIIA> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('DOCX generated successfully'))
+        const SnackBar(content: Text('DOCX downloaded successfully'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating DOCX: $e'))
+        SnackBar(content: Text('Error downloading DOCX: $e'))
       );
     } finally {
       setState(() => _compiling = false);
@@ -514,7 +529,7 @@ class _PartIIAState extends State<PartIIA> {
             IconButton(
               icon: const Icon(Icons.file_download),
               onPressed: _compiling ? null : _compileDocx,
-              tooltip: 'Generate DOCX',
+              tooltip: 'Download DOCX',
               color: const Color(0xff021e84),
             ),
           ],
