@@ -1,47 +1,54 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/user_utils.dart';
 
-Future<void> createNotification(String title, String body) async {
+Future<void> createNotification(String title, String body, String yearRange) async {
   try {
     final now = DateTime.now();
     final expiresAt = now.add(const Duration(hours: 24));
     final username = await getCurrentUsername();
     
-    await FirebaseFirestore.instance.collection('notifications').add({
-      'title': title,
-      'body': body,
-      'timestamp': FieldValue.serverTimestamp(),
-      'readBy': {},
-      'expiresAtBy': {},
-      'dismissedBy': {},
-      'expiresAt': Timestamp.fromDate(expiresAt),
-      'createdBy': username,
-    });
+    await FirebaseFirestore.instance
+      .collection('notifications')
+      .doc(yearRange)
+      .collection('items')
+      .add({
+        'title': title,
+        'body': body,
+        'timestamp': FieldValue.serverTimestamp(),
+        'readBy': {},
+        'expiresAtBy': {},
+        'dismissedBy': {},
+        'expiresAt': Timestamp.fromDate(expiresAt),
+        'createdBy': username,
+      });
   } catch (e) {
     print('Error creating notification: $e');
   }
 }
 
-Future<void> createSubmissionNotification(String sectionName) async {
+Future<void> createSubmissionNotification(String sectionName, String yearRange) async {
   final username = await getCurrentUsername();
   await createNotification(
     'New Submission',
     '$sectionName has been submitted for review by $username.',
+    yearRange,
   );
 }
 
-Future<void> createFinalizationNotification(String sectionName) async {
+Future<void> createFinalizationNotification(String sectionName, String yearRange) async {
   final username = await getCurrentUsername();
   await createNotification(
     'Section Finalized',
     '$sectionName has been finalized by $username(Admin).',
+    yearRange,
   );
 }
 
-Future<void> createRejectionNotification(String sectionName, String message) async {
+Future<void> createRejectionNotification(String sectionName, String message, String yearRange) async {
   final username = await getCurrentUsername();
   await createNotification(
     'Section Rejected',
     '$sectionName has been rejected by $username(Admin).\nReason: $message',
+    yearRange,
   );
 } 

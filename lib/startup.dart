@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import 'state/selection_model.dart';
 import 'landing.dart';
+import 'startup_time.dart';
 
-class StartupPage extends StatelessWidget {
-  const StartupPage({super.key});
+class StartupPage extends StatefulWidget {
+  final bool fromSettings;
+  const StartupPage({super.key, this.fromSettings = false});
 
+  @override
+  State<StartupPage> createState() => _StartupPageState();
+}
+
+class _StartupPageState extends State<StartupPage> {
   static const double _minTileWidth = 120;
 
   final List<_Choice> _choices = const [
@@ -39,135 +49,317 @@ class StartupPage extends StatelessWidget {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.fromSettings) {
+      _syncSelectionWithSubRoles();
+    }
+  }
+
+  Future<void> _syncSelectionWithSubRoles() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (!userDoc.exists) return;
+    final subRoles = List<String>.from(userDoc.data()?['sub_roles'] ?? []);
+    final indices = <int>{};
+    for (int i = 0; i < _choices.length; i++) {
+      if (subRoles.contains(_choices[i].label)) {
+        indices.add(i);
+      }
+    }
+    if (mounted) {
+      Provider.of<SelectionModel>(context, listen: false).setAll(indices);
+    }
+  }
+
+  Future<void> _handleGetStarted(BuildContext context) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You must be logged in to continue'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final selection = Provider.of<SelectionModel>(context, listen: false).selected;
+      if (selection.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select at least one project'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final selectedProjects = selection.map((index) => _choices[index].label).toSet().toList();
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'sub_roles': selectedProjects,
+      }, SetOptions(merge: true));
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Projects updated successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      if (widget.fromSettings) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const Landing()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const StartupTimePage()),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final selection = context.watch<SelectionModel>().selected;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Choose the Project',
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineSmall!
-                    .copyWith(fontWeight: FontWeight.bold),
+        child: Column(
+          children: [
+            Container(
+              padding: EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Color(0xff021e84),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0xff021e84).withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Display the selected projects, you can choose more than one!',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium!
-                    .copyWith(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 24),
-
-              Expanded(
-                child: LayoutBuilder(builder: (ctx, constraints) {
-                  final raw = constraints.maxWidth ~/ _minTileWidth;
-                  final maxCols = _choices.length < 9 ? _choices.length : 9;
-                  final count = raw.clamp(3, maxCols);
-
-                  return GridView.builder(
-                    itemCount: _choices.length,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: count,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      childAspectRatio: 0.55,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Choose the Project',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
-                    itemBuilder: (ctx, i) {
-                      final c = _choices[i];
-                      final sel = selection.contains(i);
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          color: sel
-                              ? Colors.lightBlue.shade50
-                              : Colors.white,
-                          border: Border.all(
-                            color: sel
-                                ? Color(0xff021e84)
-                                : Colors.grey.shade300,
-                            width: sel ? 2 : 1,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 4,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
+                  ),
+                  SizedBox(height: 12),
+                  Container(
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.white,
+                          size: 24,
                         ),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () {
-                            context.read<SelectionModel>().toggle(i);
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Display the selected projects, you can choose more than one!',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.white,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            final selectionModel = context.read<SelectionModel>();
+                            if (selectionModel.selected.length == _choices.length) {
+                              selectionModel.clear();
+                            } else {
+                              selectionModel.selectAll(_choices.length);
+                            }
                           },
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                c.icon,
-                                size: 32,
-                                color: sel
-                                    ? Color(0xff021e84)
-                                    : Colors.black54,
+                          icon: Icon(
+                            context.watch<SelectionModel>().selected.length == _choices.length
+                                ? Icons.deselect
+                                : Icons.select_all,
+                            color: Colors.white,
+                          ),
+                          label: Text(
+                            context.watch<SelectionModel>().selected.length == _choices.length
+                                ? 'Deselect All'
+                                : 'Select All',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(0xff021e84),
+                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 2,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 24),
+
+                    Expanded(
+                      child: LayoutBuilder(builder: (ctx, constraints) {
+                        final raw = constraints.maxWidth ~/ _minTileWidth;
+                        final maxCols = _choices.length < 9 ? _choices.length : 9;
+                        final count = raw.clamp(3, maxCols);
+
+                        return GridView.builder(
+                          itemCount: _choices.length,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: count,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            childAspectRatio: 0.55,
+                          ),
+                          itemBuilder: (ctx, i) {
+                            final c = _choices[i];
+                            final sel = selection.contains(i);
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                color: sel ? Color(0xff021e84).withOpacity(0.1) : Colors.white,
+                                border: Border.all(
+                                  color: sel ? Color(0xff021e84) : Colors.grey.shade200,
+                                  width: sel ? 2 : 1,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: sel 
+                                        ? Color(0xff021e84).withOpacity(0.1)
+                                        : Colors.black.withOpacity(0.05),
+                                    blurRadius: 8,
+                                    offset: Offset(0, 4),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 12),
-                              Text(
-                                c.label,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  color: sel
-                                      ? Color(0xff021e84)
-                                      : Colors.black87,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () {
+                                  context.read<SelectionModel>().toggle(i);
+                                },
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: sel 
+                                            ? Color(0xff021e84).withOpacity(0.1)
+                                            : Colors.grey.shade50,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        c.icon,
+                                        size: 32,
+                                        color: sel ? Color(0xff021e84) : Colors.grey.shade600,
+                                      ),
+                                    ),
+                                    SizedBox(height: 16),
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 12),
+                                      child: Text(
+                                        c.label,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+                                          color: sel ? Color(0xff021e84) : Colors.grey.shade800,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            );
+                          },
+                        );
+                      }),
+                    ),
+
+                    SizedBox(height: 24),
+                    InkWell(
+                      onTap: () {
+                        _handleGetStarted(context);
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: Color(0xff021e84),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'Get Started!',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                      );
-                    },
-                  );
-                }),
-              ),
-
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xff021e84),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                  ),
-                  onPressed: selection.isEmpty
-                      ? null
-                      : () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const Landing()),
-                    );
-                  },
-                  child: const Text(
-                    'Get Started!',
-                    style: TextStyle(fontSize: 16, color: Colors.white),
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

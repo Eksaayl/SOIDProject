@@ -10,6 +10,8 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../config.dart';
+import '../state/selection_model.dart';
+import 'package:provider/provider.dart';
 
 class Part3 extends StatefulWidget {
   const Part3({super.key});
@@ -21,7 +23,7 @@ class Part3 extends StatefulWidget {
 class _Part3State extends State<Part3> {
   int _selectedIndex = -1;
   bool _isCompiling = false;
-  static const _docId = 'document';
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
 
   Future<void> mergePartIIIDocuments(BuildContext context, String documentId) async {
     try {
@@ -30,9 +32,9 @@ class _Part3State extends State<Part3> {
       setState(() => _isCompiling = true);
 
       final sectionRefs = await Future.wait([
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('III.A').get(),
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('III.B').get(),
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('III.C').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('III.A').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('III.B').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('III.C').get(),
       ]);
 
       final notFinalized = <String>[];
@@ -45,14 +47,14 @@ class _Part3State extends State<Part3> {
 
       if (notFinalized.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please finalize the following sections first: \\${notFinalized.join(", ")}'))
+          SnackBar(content: Text('Please finalize the following sections first: ${notFinalized.join(", ")}'))
         );
         return;
       }
 
-      final iii_a_bytes = await storage.ref().child('$documentId/III.A/document.docx').getData();
-      final iii_b_bytes = await storage.ref().child('$documentId/III.B/document.docx').getData();
-      final iii_c_bytes = await storage.ref().child('$documentId/III.C/document.docx').getData();
+      final iii_a_bytes = await storage.ref().child('$_yearRange/III.A/document.docx').getData();
+      final iii_b_bytes = await storage.ref().child('$_yearRange/III.B/document.docx').getData();
+      final iii_c_bytes = await storage.ref().child('$_yearRange/III.C/document.docx').getData();
 
       if (iii_a_bytes == null || iii_b_bytes == null || iii_c_bytes == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -73,16 +75,16 @@ class _Part3State extends State<Part3> {
       final merge_response = await merge_request.send();
       if (merge_response.statusCode != 200) {
         final error = await merge_response.stream.bytesToString();
-        throw Exception('Failed to merge documents: \\${merge_response.statusCode} - $error');
+        throw Exception('Failed to merge documents: ${merge_response.statusCode} - $error');
       }
 
       final responseBytes = await merge_response.stream.toBytes();
 
-      final mergedRef = storage.ref().child('$documentId/part_iii_merged.docx');
+      final mergedRef = storage.ref().child('$_yearRange/part_iii_merged.docx');
       await mergedRef.putData(responseBytes);
 
-      await firestore.collection('issp_documents').doc(documentId).update({
-        'partIIIMergedPath': '$documentId/part_iii_merged.docx',
+      await firestore.collection('issp_documents').doc(_yearRange).update({
+        'partIIIMergedPath': '$_yearRange/part_iii_merged.docx',
         'lastModified': FieldValue.serverTimestamp(),
       });
 
@@ -156,7 +158,7 @@ class _Part3State extends State<Part3> {
               const CircularProgressIndicator()
             else
               ElevatedButton.icon(
-                onPressed: () => mergePartIIIDocuments(context, _docId),
+                onPressed: () => mergePartIIIDocuments(context, _yearRange),
                 icon: const Icon(Icons.merge_type),
                 label: const Text('Merge All Parts III'),
                 style: ElevatedButton.styleFrom(
@@ -197,7 +199,7 @@ class _Part3State extends State<Part3> {
           const CircularProgressIndicator()
         else
           ElevatedButton.icon(
-            onPressed: () => mergePartIIIDocuments(context, _docId),
+            onPressed: () => mergePartIIIDocuments(context, _yearRange),
             icon: const Icon(Icons.merge_type),
             label: const Text('Merge All Parts III'),
             style: ElevatedButton.styleFrom(

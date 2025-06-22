@@ -12,12 +12,14 @@ import 'services/notification_service.dart';
 import 'utils/user_utils.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:provider/provider.dart';
+import 'state/selection_model.dart';
 
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({Key? key}) : super(key: key);
 
   Future<String?> _convertDocxToHtml(Uint8List bytes, String filename) async {
-    final uri = Uri.parse('http://localhost:8000/convert-docx'); // Change to your server address
+    final uri = Uri.parse('http://localhost:8000/convert-docx'); 
     final request = http.MultipartRequest('POST', uri)
       ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     final response = await request.send();
@@ -117,31 +119,45 @@ class AdminDashboard extends StatelessWidget {
 
   Future<void> _updateScreeningStatus(BuildContext context, DocumentSnapshot section, bool approved, {String? rejectionMessage}) async {
     try {
-      final username = await getCurrentUsername();
       final data = section.data() as Map<String, dynamic>;
       final sectionName = data['sectionTitle'] as String? ?? 'Unknown Section';
+      final createdBy = data['createdBy'] as String? ?? 'Unknown User';
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+      if (yearRange == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No year range selected. Cannot send notification.'))
+        );
+        return;
+      }
       
       if (approved) {
         await section.reference.update({
           'screening': FieldValue.delete(),
           'isFinalized': true,
           'screeningDate': FieldValue.serverTimestamp(),
-          'screenedBy': username,
+          'screenedBy': await getCurrentUsername(),
         });
-        await createFinalizationNotification(sectionName);
+        await createFinalizationNotification(sectionName, yearRange);
       } else {
         await section.reference.update({
+          'isFinalized': false,
           'screening': false,
           'screeningDate': FieldValue.serverTimestamp(),
-          'screenedBy': username,
-          'rejectionMessage': rejectionMessage ?? '',
+          'screenedBy': await getCurrentUsername(),
+          'rejectionMessage': rejectionMessage,
         });
-        if (rejectionMessage != null && rejectionMessage.isNotEmpty) {
-          await createRejectionNotification(sectionName, rejectionMessage);
-        }
+        await createNotification(
+          'Section Rejected',
+          'Your section "$sectionName" has been rejected.${rejectionMessage != null ? ' Reason: $rejectionMessage' : ''}',
+          yearRange,
+        );
       }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Section ${approved ? 'approved' : 'rejected'} successfully')),
+        SnackBar(
+          content: Text(approved ? 'Section approved successfully' : 'Section rejected successfully'),
+          backgroundColor: approved ? Colors.green : Colors.red,
+        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -150,11 +166,12 @@ class AdminDashboard extends StatelessWidget {
     }
   }
 
-  Future<void> _finalizeSection(String sectionId, String sectionName) async {
+  Future<void> _finalizeSection(BuildContext context, String sectionId, String sectionName) async {
     try {
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
       await FirebaseFirestore.instance
           .collection('issp_documents')
-          .doc('document')
+          .doc(yearRange)
           .collection('sections')
           .doc(sectionId)
           .update({
@@ -203,6 +220,7 @@ class AdminDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
     return AdminRouteGuard(
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -222,7 +240,7 @@ class AdminDashboard extends StatelessWidget {
         body: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('issp_documents')
-              .doc('document')
+              .doc(yearRange)
               .collection('sections')
               .where('screening', isEqualTo: true)
               .snapshots(),
@@ -288,7 +306,7 @@ class AdminDashboard extends StatelessWidget {
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.download, color: Color(0xff021e84)),
-                                  onPressed: () => _downloadDocument(context, 'document', doc.id),
+                                  onPressed: () => _downloadDocument(context, yearRange, doc.id),
                                   tooltip: 'Download Document',
                                 ),
                               ],
@@ -316,10 +334,10 @@ class AdminDashboard extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             ElevatedButton(
-                              onPressed: () {
-                                _updateScreeningStatus(context, doc, true);
+                              onPressed: () async {
+                                await _updateScreeningStatus(context, doc, true);
                                 if (!isFinalized) {
-                                  _finalizeSection(doc.id, sectionName);
+                                  await _finalizeSection(context, doc.id, sectionName);
                                 }
                               },
                               style: ElevatedButton.styleFrom(

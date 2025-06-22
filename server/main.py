@@ -10,16 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from docx import Document
 from docxcompose.composer import Composer
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 import uvicorn
 import uuid
-from server.tables import create_iii_b_docx, create_iii_a_docx
+from server.tables import create_iii_b_docx, create_iii_a_docx, create_iiic_logframe_table
 import argparse
 import mammoth
 from server.part_ib_handler import generate_part_ib_docx, process_part_ib_data
 from datetime import datetime
 
-# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -268,7 +267,7 @@ async def generate_docx(
                 if len(images) != 2:
                     raise HTTPException(status_code=400, detail="Part II.D requires exactly 2 images")
                 docx_bytes = await generate_docx_II_d(template_file, images)
-            elif "templates_IV_b.docx" in template.filename:
+            elif "IV_b.docx" in template.filename:
                 if len(images) != 3:
                     raise HTTPException(status_code=400, detail="Part IV.B requires exactly 3 images")
                 docx_bytes = await generate_docx_IV_b(template_file, images)
@@ -281,7 +280,7 @@ async def generate_docx(
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
         
-        if "templates_IV_b.docx" in template.filename:
+        if "IV_b.docx" in template.filename:
             return StreamingResponse(
                 io.BytesIO(docx_bytes),
                 media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -558,6 +557,8 @@ async def merge_documents_part_iv(
 @app.post("/generate-ia-docx/")
 async def generate_ia_docx_endpoint(request: Request):
     data = await request.json()
+    year_range = request.headers.get('yearrange', '')
+    logger.debug(f"[IA DOCX] Received yearRange from headers: '{year_range}'")
     replacements = {
         "${documentName}": data.get('documentName', ''),
         "${legalBasis}": data.get('legalBasis', ''),
@@ -565,6 +566,7 @@ async def generate_ia_docx_endpoint(request: Request):
         "${missionStatement}": data.get('missionStatement', ''),
         "${framework}": data.get('framework', ''),
         "${pillar}": data.get('pillar', ''),
+        "${yearRange}": year_range,
     }
     import tempfile, uuid, os
     temp_dir = tempfile.gettempdir()
@@ -601,6 +603,7 @@ async def generate_iic_docx_endpoint(request: Request):
     
 @app.post("/generate-iii-a-docx/")
 async def generate_iii_a_docx_endpoint(request: Request):
+    projects = await request.json()
     projects = await request.json()
     temp_dir = tempfile.gettempdir()
     filename = f"iii_a_{uuid.uuid4().hex}.docx"
@@ -639,15 +642,53 @@ async def root():
 
 def fill_placeholders_and_bullets(template_path, output_path, replacements):
     from docx import Document
+    from docx.shared import Pt
     doc = Document(template_path)
+
     for para in doc.paragraphs:
         for ph, val in replacements.items():
             if ph in para.text:
-                para.text = para.text.replace(ph, val)
+                if ph == "${framework}":
+                    para.clear()
+                    run = para.add_run(val)
+                    run.bold = True
+                    run.font.name = 'Palatino Linotype'
+                    run.font.size = Pt(12)
+                elif ph in ["${visionStatement}", "${missionStatement}"]:
+                    para.clear()
+                    run = para.add_run(f'"{val}"')
+                    run.italic = True
+                    run.font.name = 'Palatino Linotype'
+                    run.font.size = Pt(12)
+                else:
+                    para.text = para.text.replace(ph, val)
+                    for run in para.runs:
+                        run.font.name = 'Palatino Linotype'
+                        run.font.size = Pt(12)
     
     for para in doc.paragraphs:
         replace_placeholder_in_paragraph(para, "${pillar}", replacements.get("${pillar}", ""))
-    
+        for run in para.runs:
+            run.font.name = 'Palatino Linotype'
+            run.font.size = Pt(12)
+    for section in doc.sections:
+        for header in [section.header, section.first_page_header, section.even_page_header]:
+            for para in header.paragraphs:
+                for ph, val in replacements.items():
+                    if ph in para.text:
+                        para.text = para.text.replace(ph, val)
+                        for run in para.runs:
+                            run.font.name = 'Palatino Linotype'
+                            run.font.size = Pt(14)
+                            run.bold = True
+        for footer in [section.footer, section.first_page_footer, section.even_page_footer]:
+            for para in footer.paragraphs:
+                for ph, val in replacements.items():
+                    if ph in para.text:
+                        para.text = para.text.replace(ph, val)
+                        for run in para.runs:
+                            run.font.name = 'Palatino Linotype'
+                            run.font.size = Pt(12)
     doc.save(output_path)
 
 def replace_placeholder_in_paragraph(para, placeholder, replacement):
@@ -665,15 +706,16 @@ def replace_placeholder_in_paragraph(para, placeholder, replacement):
 async def generate_ib_docx_endpoint(request: Request):
     try:
         data = await request.json()
-        logger.debug(f"Received data: {data}")
+        year_range = request.headers.get('yearrange', '') or data.get('yearRange', '')
+        logger.debug(f"[IB DOCX] Received yearRange: '{year_range}'")
         
-        # Get current date if not provided
         current_date = data.get('currDate', '')
         if not current_date:
             current_date = datetime.now().strftime('%B %d, %Y')
         data['currDate'] = current_date
         
         processed_data = process_part_ib_data(data)
+        processed_data['yearRange'] = year_range
         logger.debug(f"Processed data: {processed_data}")
         
         template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'b.docx')
@@ -684,7 +726,6 @@ async def generate_ib_docx_endpoint(request: Request):
             logger.error(error_msg)
             raise HTTPException(status_code=404, detail=error_msg)
 
-        # Generate the document
         try:
             docx_bytes = generate_part_ib_docx(processed_data, template_path)
             logger.debug("Document generated successfully")
@@ -704,6 +745,19 @@ async def generate_ib_docx_endpoint(request: Request):
         logger.error(f"Unexpected error in generate_ib_docx_endpoint: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.post("/generate-iiic-docx/")
+async def generate_iiic_docx_endpoint(request: Request):
+    data = await request.json()
+    import tempfile, uuid, os
+    temp_dir = tempfile.gettempdir()
+    filename = f"iiic_{uuid.uuid4().hex}.docx"
+    output_path = os.path.join(temp_dir, filename)
+    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'III_c.docx')
+    doc = Document(template_path)
+    create_iiic_logframe_table(data, output_path, doc=doc)
+    from fastapi.responses import FileResponse
+    return FileResponse(output_path, filename="iiic.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -3,10 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'services/notification_service.dart';
+import 'package:provider/provider.dart';
+import 'state/selection_model.dart';
 
 class HistoryPage extends StatelessWidget {
-  final String documentId;
-  const HistoryPage({Key? key, required this.documentId}) : super(key: key);
+  const HistoryPage({Key? key}) : super(key: key);
 
   Future<void> _toggleFinalizedStatus(BuildContext context, DocumentSnapshot section) async {
     final data = section.data() as Map<String, dynamic>;
@@ -19,7 +20,6 @@ class HistoryPage extends StatelessWidget {
       return;
     }
 
-    // Check if user is admin
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     
@@ -47,6 +47,7 @@ class HistoryPage extends StatelessWidget {
       await createNotification(
         'Section Unfinalized',
         'The section "${data['sectionTitle'] ?? section.id}" has been unfinalized.',
+        context.read<SelectionModel>().yearRange ?? '2729',
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -57,9 +58,10 @@ class HistoryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
     final sectionsRef = FirebaseFirestore.instance
         .collection('issp_documents')
-        .doc(documentId)
+        .doc(yearRange)
         .collection('sections');
 
     return StreamBuilder<DocumentSnapshot>(
@@ -99,7 +101,7 @@ class HistoryPage extends StatelessWidget {
           backgroundColor: Colors.white,
           appBar: AppBar(
             title: Text(
-              'History • $documentId',
+              'History • $yearRange',
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 20,

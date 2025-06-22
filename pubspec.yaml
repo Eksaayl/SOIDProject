@@ -47,7 +47,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   loading_indicator: ^3.1.1
   flutter_html: ^3.0.0-beta.2
-  file_picker: ^10.1.9
+  file_picker: ^10.2.0
   firebase_storage: ^12.4.5
   flutter_image_compress: ^2.1.0
   flutter_dotenv: ^5.1.0
@@ -62,7 +62,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -86,6 +86,10 @@ flutter:
      - assets/II_b.docx
      - assets/II_c.docx
      - assets/II_d.docx
+     - assets/III_a.docx
+     - assets/III_b.docx
+     - assets/III_c.docx
+     - assets/IV_a.docx
      - assets/templates_IV_b.docx
      - assets/.env
 

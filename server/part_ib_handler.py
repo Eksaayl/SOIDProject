@@ -6,11 +6,10 @@ import logging
 import traceback
 from typing import Dict, Any
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 from docx.oxml import parse_xml
 from docx.oxml.ns import qn
 
-# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -23,7 +22,6 @@ def replace_first_picture_content_control(doc, image_path):
     """
     ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
     for sdt in doc.element.iterfind('.//%ssdt' % ns):
-        # Look for a drawing or pict in the content control
         sdt_content = sdt.find(f'{ns}sdtContent')
         if sdt_content is not None:
             found_pic = False
@@ -32,7 +30,6 @@ def replace_first_picture_content_control(doc, image_path):
                     found_pic = True
                     break
             if found_pic:
-                # Remove all children in sdtContent
                 for child in list(sdt_content):
                     sdt_content.remove(child)
                 from docx.text.paragraph import Paragraph
@@ -63,13 +60,11 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
     logger.debug(f"Received data keys: {list(data.keys())}")
     
     try:
-        # Check if template exists
         if not os.path.exists(template_path):
             error_msg = f"Template file not found at {template_path}"
             logger.error(error_msg)
             raise FileNotFoundError(error_msg)
             
-        # Load the template
         try:
             doc = Document(template_path)
             logger.debug("Template loaded successfully")
@@ -78,7 +73,6 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
             logger.error(error_msg)
             raise
             
-        # --- Replace text placeholders in paragraphs ---
         for paragraph in doc.paragraphs:
             for key, value in data.items():
                 if key != 'organizationalStructure':
@@ -87,7 +81,6 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
                         logger.debug(f"Replacing {placeholder} in paragraph with {value}")
                         paragraph.text = paragraph.text.replace(placeholder, str(value))
 
-        # --- Replace text placeholders in tables ---
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
@@ -98,25 +91,39 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
                                 logger.debug(f"Replacing {placeholder} in table cell with {value}")
                                 cell.text = cell.text.replace(placeholder, str(value))
         
-        # --- Insert the image at the placeholder paragraph ---
+        for section in doc.sections:
+            for header in [section.header, section.first_page_header, section.even_page_header]:
+                for para in header.paragraphs:
+                    for key, value in data.items():
+                        placeholder = f'${{{key}}}'
+                        if placeholder in para.text:
+                            para.text = para.text.replace(placeholder, str(value))
+                            for run in para.runs:
+                                run.font.name = 'Palatino Linotype'
+                                run.font.size = Pt(14)
+                                run.bold = True
+            for footer in [section.footer, section.first_page_footer, section.even_page_footer]:
+                for para in footer.paragraphs:
+                    for key, value in data.items():
+                        placeholder = f'${{{key}}}'
+                        if placeholder in para.text:
+                            para.text = para.text.replace(placeholder, str(value))
+        
         if 'organizationalStructure' in data and data['organizationalStructure']:
             try:
                 image_data = base64.b64decode(data['organizationalStructure'])
                 logger.debug(f"Decoded image size: {len(image_data)} bytes")
                 
-                # Create a temporary file for the image
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_img:
                     temp_img.write(image_data)
                     temp_img_path = temp_img.name
                 
                 logger.debug(f"Created temporary image file at: {temp_img_path}")
 
-                # Find the paragraph with the placeholder and replace it with the image
                 found = False
                 for i, paragraph in enumerate(doc.paragraphs):
                     if '${organizationalStructure}' in paragraph.text:
                         logger.debug("Found image placeholder in paragraph. Replacing with image.")
-                        # Remove the placeholder text
                         paragraph.text = paragraph.text.replace('${organizationalStructure}', '')
                         run = paragraph.add_run()
                         run.add_picture(temp_img_path, width=Inches(8.29), height=Inches(5.27))
@@ -125,7 +132,6 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
                 if not found:
                     logger.warning("Image placeholder not found in document.")
                 
-                # Clean up the temporary file
                 os.unlink(temp_img_path)
                 logger.debug("Temporary image file cleaned up")
             except Exception as e:
@@ -136,7 +142,6 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
         else:
             logger.warning("No organizational structure image provided")
         
-        # Save the document to bytes
         try:
             docx_bytes = io.BytesIO()
             doc.save(docx_bytes)
@@ -167,17 +172,12 @@ def format_number(value: str) -> str:
     """
     if not value or not value.strip():
         return '0'
-        
-    # Remove any existing commas
     value = value.strip().replace(',', '')
-    
-    # If the value is not a number, return it as is
     if not value.replace('-', '').replace('.', '').isdigit():
         logger.debug(f"Value '{value}' is not a number, returning as is")
         return value
         
     try:
-        # Format with commas
         num = int(float(value))
         return f"{num:,}"
     except (ValueError, TypeError) as e:
@@ -196,7 +196,6 @@ def process_part_ib_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     try:
         logger.debug("Processing Part IB data")
-        # Format all numeric fields
         numeric_fields = [
             'mooe', 'co', 'total', 'nicthsProjectCost', 'hsdvProjectCost', 'hecsProjectCost',
             'totalEmployees', 'regionalOffices', 'provincialOffices',
@@ -221,11 +220,9 @@ def process_part_ib_data(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def generate_ib_docx(data):
     try:
-        # Load the template
         template_path = os.path.join(os.path.dirname(__file__), 'templates', 'part_ib_template.docx')
         doc = Document(template_path)
 
-        # Define replacements
         replacements = {
             '${plannerName}': data.get('plannerName', ''),
             '${plantillaPosition}': data.get('plantillaPosition', ''),
@@ -257,13 +254,38 @@ def generate_ib_docx(data):
             '${currDate}': data.get('currDate', ''),
         }
 
-        # Replace placeholders in the document
+        bold_keys = {'${total}', '${coTotal}', '${foTotal}'}
+        def replace_placeholder_with_bold(paragraph, key, value):
+            full_text = ''.join(run.text for run in paragraph.runs)
+            if key not in full_text:
+                return
+            parts = full_text.split(key)
+            for run in paragraph.runs:
+                run.text = ''
+            for i, part in enumerate(parts):
+                if part:
+                    paragraph.add_run(part)
+                if i < len(parts) - 1:
+                    bold_run = paragraph.add_run(value)
+                    bold_run.bold = True
+
         for paragraph in doc.paragraphs:
             for key, value in replacements.items():
-                if key in paragraph.text:
+                if key in bold_keys and key in paragraph.text:
+                    replace_placeholder_with_bold(paragraph, key, value)
+                elif key in paragraph.text:
                     paragraph.text = paragraph.text.replace(key, value)
 
-        # Save the modified document to a temporary file
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for key, value in replacements.items():
+                        for para in cell.paragraphs:
+                            if key in bold_keys and key in para.text:
+                                replace_placeholder_with_bold(para, key, value)
+                            elif key in para.text:
+                                para.text = para.text.replace(key, value)
+
         temp_path = os.path.join(os.path.dirname(__file__), 'temp', 'part_ib_output.docx')
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
         doc.save(temp_path)

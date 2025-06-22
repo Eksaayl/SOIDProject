@@ -12,7 +12,7 @@ def convert_docx():
         return jsonify({'error': 'No selected file'}), 400
     try:
         result = mammoth.convert_to_html(file)
-        html = result.value  # The generated HTML
+        html = result.value  
         return jsonify({'html': html})
     except Exception as e:
         return jsonify({'error': str(e)}), 500 

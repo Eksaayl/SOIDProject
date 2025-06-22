@@ -13,6 +13,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:test_project/main_part.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
+import '../../state/selection_model.dart';
+import 'package:provider/provider.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -114,13 +116,14 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
   final _storage = FirebaseStorage.instance;
   String get _userId =>
       _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
 
   @override
   void initState() {
     super.initState();
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
-        .doc(widget.documentId)
+        .doc(_yearRange)
         .collection('sections')
         .doc('I.D');
 
@@ -140,7 +143,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         });
 
         try {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.D/document.docx');
+          final docxRef = _storage.ref().child('$_yearRange/I.D/document.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -170,7 +173,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('${widget.documentId}/I.D/document.docx');
+          final docxRef = _storage.ref().child('$_yearRange/I.D/document.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -199,7 +202,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     if (_uploadedFileBytes == null) throw Exception('No file to upload');
     
     final storageRef = _storage.ref()
-        .child('${widget.documentId}/I.D/document.docx');
+        .child('$_yearRange/I.D/document.docx');
 
     final uploadTask = storageRef.putData(_uploadedFileBytes!);
     final snapshot = await uploadTask;
@@ -222,6 +225,8 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+      final formattedYearRange = formatYearRange(yearRange);
       final payload = {
         'fileName': _fileName,
         'fileUrl': fileUrl,
@@ -230,6 +235,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         'isFinalized': _isFinalized,
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part I.D',
+        'yearRange': formattedYearRange,
       };
 
       if (!_isFinalized) {
@@ -241,7 +247,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       setState(() => _isFinalized = finalize);
 
       if (finalize) {
-        await createSubmissionNotification('Part I.D');
+        await createSubmissionNotification('Part I.D', _yearRange);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -302,7 +308,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
   Future<void> _downloadTemplate() async {
     try {
       final storage = FirebaseStorage.instance;
-      final ref = storage.ref().child('document/I.D/d.docx');
+      final ref = storage.ref().child('$_yearRange/I.D/d.docx');
       final bytes = await ref.getData();
       if (bytes != null) {
         if (kIsWeb) {
@@ -339,266 +345,407 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Part I.D - Present ICT Situation (Strategic Challenges)',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF2D3748),
-        actions: [
-          if (_saving)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xff021e84),
+    return WillPopScope(
+      onWillPop: () async {
+        final shouldPop = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              backgroundColor: Colors.white,
+              elevation: 20,
+              title: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xff021e84), Color(0xff1e40af)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.warning_amber, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Save Before Leaving',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            )
-          else ...[
-            if (!_isFinalized)
-              IconButton(
-                icon: const Icon(Icons.save),
-                onPressed: _saving ? null : () => _save(),
-                tooltip: 'Save',
-                color: const Color(0xff021e84),
-              ),
-            IconButton(
-              icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () async {
-                final confirmed = await showFinalizeConfirmation(
-                  context,
-                  'Part I.D - Present ICT Situation (Strategic Challenges)'
-                );
-                if (confirmed) {
-                  _save(finalize: true);
-                }
-              },
-              tooltip: 'Finalize',
-              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
-            ),
-          ]
-        ],
-      ),
-      body: _isFinalized
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.lock, size: 48, color: Colors.grey),
-                  SizedBox(height: 12),
-                  Text(
-                    'Part I.D - Present ICT Situation (Strategic Challenges) has been finalized.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+              content: Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff021e84).withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xff021e84).withOpacity(0.1),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.info_outline,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Instructions',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Please upload a DOCX document for Part I.D. The document should contain all necessary information about strategic challenges. You can preview, save, and download the document.',
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Color(0xff021e84),
+                            size: 20,
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Make sure to save before leaving to avoid losing your work.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),
-                                height: 1.5,
+                                height: 1.4,
                               ),
                             ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                ElevatedButton.icon(
-                                  onPressed: _downloadTemplate,
-                                  icon: const Icon(Icons.download),
-                                  label: const Text('Download Part I.D Template'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                    child: const Text(
+                      'Stay',
+                      style: TextStyle(
+                        color: Color(0xFF4A5568),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xff021e84).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text(
+                      'Leave Anyway',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+        return shouldPop ?? false;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7FAFC),
+        appBar: AppBar(
+          title: const Text(
+            'Part I.D - Present ICT Situation (Strategic Challenges)',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF2D3748),
+          actions: [
+            if (_saving)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xff021e84),
+                  ),
+                ),
+              )
+            else ...[
+              if (!_isFinalized)
+                IconButton(
+                  icon: const Icon(Icons.save),
+                  onPressed: _saving ? null : () => _save(),
+                  tooltip: 'Save',
+                  color: const Color(0xff021e84),
+                ),
+              IconButton(
+                icon: const Icon(Icons.check),
+                onPressed: _isFinalized ? null : () async {
+                  final confirmed = await showFinalizeConfirmation(
+                    context,
+                    'Part I.D - Present ICT Situation (Strategic Challenges)'
+                  );
+                  if (confirmed) {
+                    _save(finalize: true);
+                  }
+                },
+                tooltip: 'Finalize',
+                color: _isFinalized ? Colors.grey : const Color(0xff021e84),
+              ),
+            ]
+          ],
+        ),
+        body: _isFinalized
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock, size: 48, color: Colors.grey),
+                    SizedBox(height: 12),
+                    Text(
+                      'Part I.D - Present ICT Situation (Strategic Challenges) has been finalized.',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              )
+            : SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.info_outline,
+                                      color: Color(0xff021e84),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Instructions',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Please upload a DOCX document for Part I.D. The document should contain all necessary information about strategic challenges. You can preview, save, and download the document.',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFF4A5568),
+                                  height: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: _downloadTemplate,
+                                    icon: const Icon(Icons.download),
+                                    label: const Text('Download Part I.D Template'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Color(0xff021e84),
+                                      foregroundColor: Colors.white,
+                                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                      textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 10),
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.description,
+                                      color: Color(0xff021e84),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Document Upload',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              if (_uploadedFileBytes != null)
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xff021e84).withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xff021e84).withOpacity(0.2),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.insert_drive_file,
+                                        color: Color(0xff021e84),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          _fileName ?? 'Document',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            color: Color(0xFF2D3748),
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.download),
+                                        onPressed: _compileDocx,
+                                        color: const Color(0xff021e84),
+                                        tooltip: 'Download Document',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              const SizedBox(height: 20),
+                              Center(
+                                child: ElevatedButton.icon(
+                                  onPressed: _isFinalized ? null : _pickFile,
+                                  icon: Icon(
+                                    _uploadedFileBytes == null ? Icons.upload_file : Icons.edit,
+                                    color: Colors.white,
+                                  ),
+                                  label: Text(
+                                    _uploadedFileBytes == null ? 'Upload Document' : 'Change Document',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Color(0xff021e84),
+                                    backgroundColor: const Color(0xff021e84),
                                     foregroundColor: Colors.white,
-                                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                    textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 12,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(10),
                                     ),
+                                    elevation: 2,
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Container(
-                        margin: const EdgeInsets.symmetric(vertical: 10),
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.description,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Document Upload',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            if (_uploadedFileBytes != null)
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xff021e84).withOpacity(0.05),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: const Color(0xff021e84).withOpacity(0.2),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.insert_drive_file,
-                                      color: Color(0xff021e84),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        _fileName ?? 'Document',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          color: Color(0xFF2D3748),
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.download),
-                                      onPressed: _compileDocx,
-                                      color: const Color(0xff021e84),
-                                      tooltip: 'Download Document',
-                                    ),
-                                  ],
                                 ),
                               ),
-                            const SizedBox(height: 20),
-                            Center(
-                              child: ElevatedButton.icon(
-                                onPressed: _isFinalized ? null : _pickFile,
-                                icon: Icon(
-                                  _uploadedFileBytes == null ? Icons.upload_file : Icons.edit,
-                                  color: Colors.white,
-                                ),
-                                label: Text(
-                                  _uploadedFileBytes == null ? 'Upload Document' : 'Change Document',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xff021e84),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  elevation: 2,
-                                ),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 32),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+      ),
     );
   }
 }

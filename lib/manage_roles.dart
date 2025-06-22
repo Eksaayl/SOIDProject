@@ -13,7 +13,7 @@ class ManageRolesPage extends StatefulWidget {
 
 class _ManageRolesPageState extends State<ManageRolesPage> {
   final int _rowsPerPage = 10;
-  final List<String> _allRoles = ['user', 'admin', 'editor'];
+  final List<String> _allRoles = ['user', 'admin', 'editor', 'itds'];
   final Map<String, String> _editedRoles = {};
   final DateFormat _fmt = DateFormat.yMd().add_jm();
   final TextEditingController _searchController = TextEditingController();
@@ -74,10 +74,16 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
           docs.sort((a, b) {
             final aData = a.data()! as Map<String, dynamic>;
             final bData = b.data()! as Map<String, dynamic>;
-            final aIsAdmin = (aData['role'] ?? '').toString().toLowerCase() == 'admin';
-            final bIsAdmin = (bData['role'] ?? '').toString().toLowerCase() == 'admin';
-            if (aIsAdmin && !bIsAdmin) return -1;
-            if (!aIsAdmin && bIsAdmin) return 1;
+            String aRole = (aData['role'] ?? '').toString().toLowerCase();
+            String bRole = (bData['role'] ?? '').toString().toLowerCase();
+            int roleRank(String role) {
+              if (role == 'admin') return 0;
+              if (role == 'itds') return 1;
+              if (role == 'editor') return 2;
+              return 3;
+            }
+            int cmp = roleRank(aRole).compareTo(roleRank(bRole));
+            if (cmp != 0) return cmp;
             final aCreated = aData['createdAt'] as Timestamp?;
             final bCreated = bData['createdAt'] as Timestamp?;
             if (aCreated != null && bCreated != null) {
@@ -212,26 +218,34 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.save, color: Color(0xff021e84)),
-                                      onPressed: () {
-                                        final newRole = _editedRoles[id];
-                                        if (newRole != null && newRole != currentRole) {
-                                          FirebaseFirestore.instance
-                                              .collection('users')
-                                              .doc(id)
-                                              .update({'role': newRole});
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Role updated'),
-                                              backgroundColor: Color(0xff021e84),
-                                            ),
-                                          );
-                                          setState(() {
-                                            _editedRoles.remove(id);
-                                          });
-                                        }
-                                      },
+                                    CircleAvatar(
+                                      backgroundColor: edited != currentRole ? const Color(0xff021e84) : Colors.grey.shade400,
+                                      radius: 18,
+                                      child: IconButton(
+                                        icon: const Icon(Icons.save, color: Colors.white, size: 18),
+                                        tooltip: 'Save role',
+                                        splashRadius: 22,
+                                        onPressed: edited != currentRole
+                                            ? () {
+                                                final newRole = _editedRoles[id];
+                                                if (newRole != null && newRole != currentRole) {
+                                                  FirebaseFirestore.instance
+                                                      .collection('users')
+                                                      .doc(id)
+                                                      .update({'role': newRole});
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('Role updated'),
+                                                      backgroundColor: Color(0xff021e84),
+                                                    ),
+                                                  );
+                                                  setState(() {
+                                                    _editedRoles.remove(id);
+                                                  });
+                                                }
+                                              }
+                                            : null,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -318,36 +332,63 @@ class _ManageRolesPageState extends State<ManageRolesPage> {
                                           Expanded(flex: 3, child: Text(createdAt)),
                                           Expanded(
                                             flex: 1,
-                                            child: DropdownButton<String>(
-                                              value: edited,
-                                              underline: const SizedBox(),
-                                              isExpanded: true,
-                                              items: _allRoles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
-                                              onChanged: (v) {
-                                                if (v == null) return;
-                                                setState(() => _editedRoles[id] = v);
-                                              },
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xffF1F4FB),
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(color: const Color(0xff021e84)),
+                                              ),
+                                              child: DropdownButtonHideUnderline(
+                                                child: DropdownButton<String>(
+                                                  value: edited,
+                                                  isExpanded: true,
+                                                  iconEnabledColor: const Color(0xff021e84),
+                                                  items: _allRoles.map((r) => DropdownMenuItem(
+                                                        value: r,
+                                                        child: Text(
+                                                          r,
+                                                          style: const TextStyle(color: Color(0xff021e84)),
+                                                        ),
+                                                      )).toList(),
+                                                  onChanged: (v) {
+                                                    if (v == null) return;
+                                                    setState(() => _editedRoles[id] = v);
+                                                  },
+                                                ),
+                                              ),
                                             ),
                                           ),
                                           Expanded(
                                             flex: 1,
-                                            child: IconButton(
-                                              icon: const Icon(Icons.save),
-                                              onPressed: () {
-                                                final newRole = _editedRoles[id];
-                                                if (newRole != null && newRole != currentRole) {
-                                                  FirebaseFirestore.instance
-                                                      .collection('users')
-                                                      .doc(id)
-                                                      .update({'role': newRole});
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(content: Text('Role updated')),
-                                                  );
-                                                  setState(() {
-                                                    _editedRoles.remove(id);
-                                                  });
-                                                }
-                                              },
+                                            child: CircleAvatar(
+                                              backgroundColor: edited != currentRole ? const Color(0xff021e84) : Colors.grey.shade400,
+                                              radius: 18,
+                                              child: IconButton(
+                                                icon: const Icon(Icons.save, color: Colors.white, size: 18),
+                                                tooltip: 'Save role',
+                                                splashRadius: 22,
+                                                onPressed: edited != currentRole
+                                                    ? () {
+                                                        final newRole = _editedRoles[id];
+                                                        if (newRole != null && newRole != currentRole) {
+                                                          FirebaseFirestore.instance
+                                                              .collection('users')
+                                                              .doc(id)
+                                                              .update({'role': newRole});
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            const SnackBar(
+                                                              content: Text('Role updated'),
+                                                              backgroundColor: Color(0xff021e84),
+                                                            ),
+                                                          );
+                                                          setState(() {
+                                                            _editedRoles.remove(id);
+                                                          });
+                                                        }
+                                                      }
+                                                    : null,
+                                              ),
                                             ),
                                           ),
                                         ],

@@ -49,12 +49,27 @@ class _LandingState extends State<Landing> {
   void _onItemTap(int idx, List<_NavItemData> mainItems, List<_NavItemData> bottomItems) async {
     final totalMain = mainItems.length;
     if (idx == totalMain + bottomItems.length - 1) {
-      await FirebaseAuth.instance.signOut();
-      context.read<SelectionModel>().setAll({});
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-      );
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({
+            'sub_roles': FieldValue.delete(),
+          });
+        }
+        await FirebaseAuth.instance.signOut();
+        context.read<SelectionModel>().setAll({});
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error during logout: $e')),
+        );
+      }
       return;
     }
 
@@ -69,7 +84,7 @@ class _LandingState extends State<Landing> {
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
+      if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', const HistoryPage()),
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
@@ -149,7 +164,7 @@ class _LandingState extends State<Landing> {
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
-      if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', HistoryPage(documentId: 'document',)),
+      if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', const HistoryPage()),
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
       _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];

@@ -13,6 +13,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart' show rootBundle;
 import 'dart:typed_data';
 import '../config.dart';
+import '../state/selection_model.dart';
+import 'package:provider/provider.dart';
 
 class Part2 extends StatefulWidget {
   const Part2({super.key});
@@ -24,11 +26,11 @@ class Part2 extends StatefulWidget {
 class _Part2State extends State<Part2> {
   int _selectedIndex = -1;
   bool _isCompiling = false;
-  static const _docId = 'document';
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
 
   Future<void> uploadGeneratedDocxToStorage(String documentId, String part, List<int> docxBytes) async {
     final storage = FirebaseStorage.instance;
-    final ref = storage.ref().child('$documentId/$part/document.docx');
+    final ref = storage.ref().child('$_yearRange/$part/document.docx');
     await ref.putData(Uint8List.fromList(docxBytes));
   }
 
@@ -39,10 +41,10 @@ class _Part2State extends State<Part2> {
       setState(() => _isCompiling = true);
 
       final sectionRefs = await Future.wait([
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('II.A').get(),
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('II.B').get(),
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('II.C').get(),
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('II.D').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('II.A').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('II.B').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('II.C').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('II.D').get(),
       ]);
 
       final notFinalized = <String>[];
@@ -60,10 +62,10 @@ class _Part2State extends State<Part2> {
         return;
       }
 
-      final ii_a_bytes = await storage.ref().child('$documentId/II.A/document.docx').getData();
-      final ii_b_bytes = await storage.ref().child('$documentId/II.B/document.docx').getData();
-      final ii_c_bytes = await storage.ref().child('$documentId/II.C/document.docx').getData();
-      final ii_d_bytes = await storage.ref().child('$documentId/II.D/document.docx').getData();
+      final ii_a_bytes = await storage.ref().child('$_yearRange/II.A/document.docx').getData();
+      final ii_b_bytes = await storage.ref().child('$_yearRange/II.B/document.docx').getData();
+      final ii_c_bytes = await storage.ref().child('$_yearRange/II.C/document.docx').getData();
+      final ii_d_bytes = await storage.ref().child('$_yearRange/II.D/document.docx').getData();
 
       if (ii_a_bytes == null || ii_b_bytes == null || ii_c_bytes == null || ii_d_bytes == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -90,11 +92,11 @@ class _Part2State extends State<Part2> {
 
       final responseBytes = await merge_response.stream.toBytes();
 
-      final mergedRef = storage.ref().child('$documentId/part_ii_merged.docx');
+      final mergedRef = storage.ref().child('$_yearRange/part_ii_merged.docx');
       await mergedRef.putData(responseBytes);
 
-      await firestore.collection('issp_documents').doc(documentId).update({
-        'partIIMergedPath': '$documentId/part_ii_merged.docx',
+      await firestore.collection('issp_documents').doc(_yearRange).update({
+        'partIIMergedPath': '$_yearRange/part_ii_merged.docx',
         'lastModified': FieldValue.serverTimestamp(),
       });
 
@@ -169,7 +171,7 @@ class _Part2State extends State<Part2> {
                     const CircularProgressIndicator()
                   else
                     ElevatedButton.icon(
-                      onPressed: () => mergePartIIDocuments(context, _docId),
+                      onPressed: () => mergePartIIDocuments(context, _yearRange),
                       icon: const Icon(Icons.merge_type),
                       label: const Text('Merge All Parts II'),
                       style: ElevatedButton.styleFrom(
@@ -211,7 +213,7 @@ class _Part2State extends State<Part2> {
                 const CircularProgressIndicator()
               else
                 ElevatedButton.icon(
-                  onPressed: () => mergePartIIDocuments(context, _docId),
+                  onPressed: () => mergePartIIDocuments(context, _yearRange),
                   icon: const Icon(Icons.merge_type),
                   label: const Text('Merge All Parts II'),
                   style: ElevatedButton.styleFrom(
@@ -236,7 +238,7 @@ class _Part2State extends State<Part2> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => const PartIIA(),
+                builder: (_) => PartIIA(documentId: _yearRange),
               ),
             );
             break;
@@ -244,7 +246,7 @@ class _Part2State extends State<Part2> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => const PartIIB(),
+                builder: (_) => PartIIB(documentId: _yearRange),
               ),
             );
             break;
@@ -252,7 +254,7 @@ class _Part2State extends State<Part2> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => const PartIIC(),
+                builder: (_) => PartIIC(documentId: _yearRange),
               ),
             );
             break;
@@ -260,7 +262,7 @@ class _Part2State extends State<Part2> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => const PartIID(),
+                builder: (_) => PartIID(documentId: _yearRange),
               ),
             );
             break;

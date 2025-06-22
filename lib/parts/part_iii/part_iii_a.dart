@@ -11,6 +11,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../../main_part.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
+import '../../state/selection_model.dart';
+import 'package:provider/provider.dart';
 
 class PartIIIA extends StatefulWidget {
   final String documentId;
@@ -29,6 +31,7 @@ class _PartIIIAState extends State<PartIIIA> {
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
 
   @override
   void initState() {
@@ -36,7 +39,7 @@ class _PartIIIAState extends State<PartIIIA> {
     addProject();
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
-        .doc(widget.documentId)
+        .doc(_yearRange)
         .collection('sections')
         .doc('III.A');
     _loadContent();
@@ -97,7 +100,7 @@ class _PartIIIAState extends State<PartIIIA> {
         try {
           final storageRef = FirebaseStorage.instance
               .ref()
-              .child('document')
+              .child(_yearRange)
               .child('III.A')
               .child(fileName);
           
@@ -105,7 +108,7 @@ class _PartIIIAState extends State<PartIIIA> {
             contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             customMetadata: {
               'uploadedBy': _userId,
-              'documentId': widget.documentId,
+              'documentId': _yearRange,
               'section': 'III.A',
             },
           );
@@ -147,11 +150,23 @@ class _PartIIIAState extends State<PartIIIA> {
     try {
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
+      
+      final projects = projectControllers.map((controllers) {
+        return {
+          'name': controllers['name']!.text,
+          'objectives': controllers['objectives']!.text,
+          'duration': controllers['duration']!.text,
+          'deliverables': controllers['deliverables']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+        };
+      }).toList();
+      
       final payload = {
+        'projects': projects,
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part III.A',
+        'isFinalized': _isFinalized,
       };
 
       if (!_isFinalized) {
@@ -159,11 +174,17 @@ class _PartIIIAState extends State<PartIIIA> {
         payload['createdBy'] = username;
       }
 
+      final docxUrl = await _generateAndUploadDocx();
+      if (docxUrl != null) {
+        payload['docxUrl'] = docxUrl;
+        payload['docxUploadedAt'] = FieldValue.serverTimestamp();
+      }
+
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
 
       if (finalize) {
-        await createSubmissionNotification('Part III.A');
+        await createSubmissionNotification('Part III.A', _yearRange);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -194,6 +215,150 @@ class _PartIIIAState extends State<PartIIIA> {
     setState(() {});
   }
 
+  Future<void> _showRemoveConfirmation(int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: Colors.white,
+          elevation: 20,
+          title: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xff021e84), Color(0xff1e40af)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.delete_forever, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Remove Project',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          content: Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff021e84).withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xff021e84).withOpacity(0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.warning_amber,
+                        color: Color(0xff021e84),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Are you sure you want to remove Project ${index + 1}? This action cannot be undone.',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFF4A5568),
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(
+                    color: Color(0xFF4A5568),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color.fromARGB(255, 132, 2, 2).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text(
+                  'Remove',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    
+    if (confirmed == true) {
+      removeProject(index);
+    }
+  }
+
   Widget projectTableForm(Map<String, TextEditingController> controllers, int index) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -205,7 +370,7 @@ class _PartIIIAState extends State<PartIIIA> {
             if (!_isFinalized && projectControllers.length > 1)
               IconButton(
                 icon: const Icon(Icons.delete, color: Colors.red),
-                onPressed: () => removeProject(index),
+                onPressed: () => _showRemoveConfirmation(index),
               ),
           ],
         ),
@@ -219,17 +384,36 @@ class _PartIIIAState extends State<PartIIIA> {
             TableRow(children: [
               Padding(
                 padding: EdgeInsets.all(8),
-                child: Text('A.1 NAME/TITLE', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text('A.1 NAME/TITLE', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(width: 4),
+                  ],
+                ),
               ),
               Padding(
                 padding: EdgeInsets.all(8),
-                child: TextFormField(controller: controllers['name'], enabled: !_isFinalized),
+                child: TextFormField(
+                  controller: controllers['name'],
+                  enabled: !_isFinalized,
+                ),
               ),
             ]),
             TableRow(children: [
               Padding(
                 padding: EdgeInsets.all(8),
-                child: Text('A.2 OBJECTIVES', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text('A.2 OBJECTIVES', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(width: 4),
+                    Tooltip(
+                      message: 'List the main objectives of the project. Use bullet points for clarity.',
+                      child: Icon(Icons.help_outline, size: 18, color: Colors.blueGrey),
+                    ),
+                  ],
+                ),
               ),
               Padding(
                 padding: EdgeInsets.all(8),
@@ -241,7 +425,9 @@ class _PartIIIAState extends State<PartIIIA> {
                         controller: controllers['objectives'],
                         maxLines: 4,
                         enabled: !_isFinalized,
-                        decoration: InputDecoration(hintText: 'One per line for bullets'),
+                        decoration: InputDecoration(
+                          hintText: 'One per line for bullets',
+                        ),
                       ),
                     ),
                     if (!_isFinalized)
@@ -268,17 +454,43 @@ class _PartIIIAState extends State<PartIIIA> {
             TableRow(children: [
               Padding(
                 padding: EdgeInsets.all(8),
-                child: Text('A.3 DURATION', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text('A.3 DURATION', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(width: 4),
+                    Tooltip(
+                      message: 'Enter the project duration. Example: 2024 - 2025',
+                      child: Icon(Icons.help_outline, size: 18, color: Colors.blueGrey),
+                    ),
+                  ],
+                ),
               ),
               Padding(
                 padding: EdgeInsets.all(8),
-                child: TextFormField(controller: controllers['duration'], enabled: !_isFinalized),
+                child: TextFormField(
+                  controller: controllers['duration'],
+                  enabled: !_isFinalized,
+                  decoration: InputDecoration(
+                    hintText: 'Enter the project duration',
+                  ),
+                ),
               ),
             ]),
             TableRow(children: [
               Padding(
                 padding: EdgeInsets.all(8),
-                child: Text('A.4 DELIVERABLES', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text('A.4 DELIVERABLES', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(width: 4),
+                    Tooltip(
+                      message: 'List the expected outputs or deliverables of the project. Use bullet points for clarity.',
+                      child: Icon(Icons.help_outline, size: 18, color: Colors.blueGrey),
+                    ),
+                  ],
+                ),
               ),
               Padding(
                 padding: EdgeInsets.all(8),
@@ -290,7 +502,9 @@ class _PartIIIAState extends State<PartIIIA> {
                         controller: controllers['deliverables'],
                         maxLines: 4,
                         enabled: !_isFinalized,
-                        decoration: InputDecoration(hintText: 'One per line for bullets'),
+                        decoration: InputDecoration(
+                          hintText: 'One per line for bullets',
+                        ),
                       ),
                     ),
                     if (!_isFinalized)
@@ -322,59 +536,35 @@ class _PartIIIAState extends State<PartIIIA> {
 
   Future<void> generateAndDownloadDocx() async {
     setState(() => _generating = true);
-    List<Map<String, dynamic>> projects = projectControllers.map((controllers) {
-      return {
-        'name': controllers['name']!.text,
-        'objectives': controllers['objectives']!.text,
-        'duration': controllers['duration']!.text,
-        'deliverables': controllers['deliverables']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
-      };
-    }).toList();
-
-    final url = Uri.parse('http://localhost:8000/generate-iii-a-docx/');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(projects),
-      );
-      if (response.statusCode == 200) {
-        final bytes = response.bodyBytes;
-        final fileName = 'document.docx';
+      final fileName = 'document.docx';
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('$_yearRange/III.A/document.docx');
+      final docxBytes = await docxRef.getData();
+      
+      if (docxBytes != null) {
         if (kIsWeb) {
           await FileSaver.instance.saveFile(
             name: fileName,
-            bytes: bytes,
+            bytes: docxBytes,
             mimeType: MimeType.microsoftWord,
           );
         } else {
           final directory = await getApplicationDocumentsDirectory();
           final file = File('${directory.path}/$fileName');
-          await file.writeAsBytes(bytes);
-
-          final storageRef = FirebaseStorage.instance
-              .ref()
-              .child('${widget.documentId}/III.A/$fileName');
-          final uploadTask = await storageRef.putFile(file);
-          final downloadUrl = await storageRef.getDownloadURL();
-
-          await _sectionRef.set({
-            'docxUrl': downloadUrl,
-            'docxUploadedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('DOCX uploaded and saved! Download: $downloadUrl')),
-          );
+          await file.writeAsBytes(docxBytes);
         }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate DOCX: \\${response.statusCode}')),
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: \\${e.toString()}')),
+        SnackBar(content: Text('Error downloading DOCX: $e')),
       );
     } finally {
       setState(() => _generating = false);
@@ -383,137 +573,222 @@ class _PartIIIAState extends State<PartIIIA> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFC),
-      appBar: AppBar(
-        title: const Text('Part III.A - Internal Systems Development Components'),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF2D3748),
-        actions: [
-          if (_saving || _generating)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    color: Color(0xff021e84),
-                    strokeWidth: 2,
+    return WillPopScope(
+      onWillPop: () async {
+        final shouldPop = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              backgroundColor: Colors.white,
+              elevation: 20,
+              title: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xff021e84), Color(0xff1e40af)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.warning_amber, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Save Before Leaving',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            )
-          else ...[
-            IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: _saving ? null : () => _save(finalize: false),
-              tooltip: 'Save',
-              color: const Color(0xff021e84),
-            ),
-            IconButton(
-              icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () async {
-                final confirmed = await showFinalizeConfirmation(
-                  context,
-                  'Part III.A - Internal Systems Development Components'
-                );
-                if (confirmed) {
-                  _save(finalize: true);
-                }
-              },
-              tooltip: 'Finalize',
-              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
-            ),
-            IconButton(
-              icon: const Icon(Icons.file_download),
-              onPressed: _generating ? null : generateAndDownloadDocx,
-              tooltip: 'Generate DOCX',
-              color: const Color(0xff021e84),
-            ),
-          ],
-        ],
-      ),
-      body: _isFinalized
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.lock, size: 48, color: Colors.grey),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Part III.A - Internal Systems Development Components has been finalized.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+              content: Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff021e84).withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xff021e84).withOpacity(0.1),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.info_outline,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Instructions',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Please fill in all the required fields for each ICT project. You can add multiple projects as needed. Each project will be exported as a table in the DOCX. Make sure all information is accurate and complete before generating the document.',
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Color(0xff021e84),
+                            size: 20,
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Make sure to save before leaving to avoid losing your work.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),
-                                height: 1.5,
+                                height: 1.4,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 24),
-                      ...projectControllers.asMap().entries.map((entry) =>
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                    child: const Text(
+                      'Stay',
+                      style: TextStyle(
+                        color: Color(0xFF4A5568),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xff021e84).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text(
+                      'Leave Anyway',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+        return shouldPop ?? false;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7FAFC),
+        appBar: AppBar(
+          title: const Text('Part III.A - Internal Systems Development Components'),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF2D3748),
+          actions: [
+            if (_saving || _generating)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Color(0xff021e84),
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
+              )
+            else ...[
+              IconButton(
+                icon: const Icon(Icons.save),
+                onPressed: _saving ? null : () => _save(finalize: false),
+                tooltip: 'Save',
+                color: const Color(0xff021e84),
+              ),
+              IconButton(
+                icon: const Icon(Icons.check),
+                onPressed: _isFinalized ? null : () async {
+                  final confirmed = await showFinalizeConfirmation(
+                    context,
+                    'Part III.A - Internal Systems Development Components'
+                  );
+                  if (confirmed) {
+                    _save(finalize: true);
+                  }
+                },
+                tooltip: 'Finalize',
+                color: _isFinalized ? Colors.grey : const Color(0xff021e84),
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                onPressed: _generating ? null : generateAndDownloadDocx,
+                tooltip: 'Generate DOCX',
+                color: const Color(0xff021e84),
+              ),
+            ],
+          ],
+        ),
+        body: _isFinalized
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock, size: 48, color: Colors.grey),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Part III.A - Internal Systems Development Components has been finalized.',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              )
+            : SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Container(
-                          margin: const EdgeInsets.only(bottom: 24),
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -526,36 +801,93 @@ class _PartIIIAState extends State<PartIIIA> {
                                 offset: const Offset(0, 2),
                               ),
                             ],
-                            border: Border.all(color: Colors.grey.shade200),
                           ),
-                          child: projectTableForm(entry.value, entry.key),
-                        ),
-                      ),
-                      if (!_isFinalized)
-                        Center(
-                          child: ElevatedButton.icon(
-                            onPressed: addProject,
-                            icon: const Icon(Icons.add, color: Colors.white),
-                            label: const Text(
-                              'Add Project',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xff021e84),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.info_outline,
+                                      color: Color(0xff021e84),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Instructions',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              elevation: 2,
-                            ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Please fill in all the required fields for each ICT project. You can add multiple projects as needed. Each project will be exported as a table in the DOCX. Make sure all information is accurate and complete before generating the document.',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFF4A5568),
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                    ],
+                        const SizedBox(height: 24),
+                        ...projectControllers.asMap().entries.map((entry) =>
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 24),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey.withOpacity(0.1),
+                                  spreadRadius: 2,
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: projectTableForm(entry.value, entry.key),
+                          ),
+                        ),
+                        if (!_isFinalized)
+                          Center(
+                            child: ElevatedButton.icon(
+                              onPressed: addProject,
+                              icon: const Icon(Icons.add, color: Colors.white),
+                              label: const Text(
+                                'Add Project',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xff021e84),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                elevation: 2,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+      ),
     );
   }
 } 

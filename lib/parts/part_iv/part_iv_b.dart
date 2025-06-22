@@ -17,6 +17,8 @@ import '../../config.dart';
 import 'package:test_project/main_part.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
+import '../../state/selection_model.dart';
+import 'package:provider/provider.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -34,12 +36,12 @@ Future<Uint8List> generateDocxWithImages({
       Uri.parse('${Config.serverUrl}/generate-docx'),
     );
 
-    final templateBytes = await rootBundle.load('assets/templates_IV_b.docx');
+    final templateBytes = await rootBundle.load('assets/IV_b.docx');
     request.files.add(
       http.MultipartFile.fromBytes(
         'template',
         templateBytes.buffer.asUint8List(),
-        filename: 'templates_IV_b.docx',
+        filename: 'IV_b.docx',
       ),
     );
 
@@ -104,13 +106,14 @@ class _PartIVBState extends State<PartIVB> {
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
   final _storage = FirebaseStorage.instance;
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
 
   @override
   void initState() {
     super.initState();
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
-        .doc(widget.documentId)
+        .doc(_yearRange)
         .collection('sections')
         .doc('IV.B');
 
@@ -127,9 +130,9 @@ class _PartIVBState extends State<PartIVB> {
         });
 
         try {
-          final existingRef = _storage.ref().child('${widget.documentId}/IV.B/existing.png');
-          final proposedRef = _storage.ref().child('${widget.documentId}/IV.B/proposed.png');
-          final placementRef = _storage.ref().child('${widget.documentId}/IV.B/placement.png');
+          final existingRef = _storage.ref().child('$_yearRange/IV.B/existing.png');
+          final proposedRef = _storage.ref().child('$_yearRange/IV.B/proposed.png');
+          final placementRef = _storage.ref().child('$_yearRange/IV.B/placement.png');
           
           final existingBytes = await existingRef.getData();
           final proposedBytes = await proposedRef.getData();
@@ -173,7 +176,7 @@ class _PartIVBState extends State<PartIVB> {
       if (result != null) {
         final bytes = result.files.first.bytes;
         if (bytes != null) {
-          final imageRef = _storage.ref().child('${widget.documentId}/IV.B/${type.toLowerCase()}.png');
+          final imageRef = _storage.ref().child('$_yearRange/IV.B/${type.toLowerCase()}.png');
           await imageRef.putData(bytes);
           
           setState(() {
@@ -255,7 +258,7 @@ class _PartIVBState extends State<PartIVB> {
       setState(() => _isFinalized = finalize);
 
       if (finalize) {
-        await createSubmissionNotification('Part IV.B');
+        await createSubmissionNotification('Part IV.B', _yearRange);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -284,21 +287,16 @@ class _PartIVBState extends State<PartIVB> {
 
     setState(() => _compiling = true);
     try {
-      final bytes = await generateDocxWithImages(
-        images: {
-          'Existing': _existingBytes!,
-          'Proposed': _proposedBytes!,
-          'Placement': _placementBytes!,
-        },
-      );
-
-      final docxRef = _storage.ref().child('${widget.documentId}/IV.B/document.docx');
-      await docxRef.putData(bytes);
-      final downloadUrl = await docxRef.getDownloadURL();
-      await _sectionRef.set({
-        'fileUrl': downloadUrl,
-        'docxUploadedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('$_yearRange/IV.B/document.docx');
+      final bytes = await docxRef.getData();
+      
+      if (bytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.'))
+        );
+        return;
+      }
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
@@ -314,11 +312,11 @@ class _PartIVBState extends State<PartIVB> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document generated and downloaded successfully'))
+        const SnackBar(content: Text('Document downloaded from storage successfully'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating document: $e'))
+        SnackBar(content: Text('Error downloading document: $e'))
       );
     } finally {
       setState(() => _compiling = false);
@@ -474,148 +472,290 @@ class _PartIVBState extends State<PartIVB> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Part IV.B - ICT Organizational Structure',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF2D3748),
-        actions: [
-          if (_saving || _compiling)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xff021e84),
+    return WillPopScope(
+      onWillPop: () async {
+        final shouldPop = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              backgroundColor: Colors.white,
+              elevation: 20,
+              title: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xff021e84), Color(0xff1e40af)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.warning_amber, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Save Before Leaving',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            )
-          else ...[
-            if (!_isFinalized)
-              IconButton(
-                icon: const Icon(Icons.save),
-                onPressed: _saving ? null : () => _save(finalize: false),
-                tooltip: 'Save',
-                color: const Color(0xff021e84),
-              ),
-            IconButton(
-              icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () async {
-                final confirmed = await showFinalizeConfirmation(
-                  context,
-                  'Part IV.B - ICT Organizational Structure'
-                );
-                if (confirmed) {
-                  setState(() => _isFinalized = true);
-                  _save(finalize: true);
-                }
-              },
-              tooltip: 'Finalize',
-              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
-            ),
-            IconButton(
-              icon: const Icon(Icons.file_download),
-              onPressed: _compiling ? null : _compileDocx,
-              tooltip: 'Generate DOCX',
-              color: const Color(0xff021e84),
-            ),
-          ],
-        ],
-      ),
-      body: _isFinalized
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.lock, size: 48, color: Colors.grey),
-                  SizedBox(height: 12),
-                  Text(
-                    'Part IV.B - ICT Organizational Structure has been finalized.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+              content: Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff021e84).withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xff021e84).withOpacity(0.1),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.info_outline,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Instructions',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Please upload three images for Part IV.B:\n\n1. Existing ICT Organizational Structure\n2. Proposed ICT Organizational Structure\n3. Placement of the Proposed Organizational Structure in the Agency Organizational Chart\n\nThe images should be in PNG format. You can preview, save, and download the images. Click the document icon in the app bar to generate a DOCX file with all three images.',
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Color(0xff021e84),
+                            size: 20,
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Make sure to save before leaving to avoid losing your work.',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF4A5568),
-                                height: 1.5,
+                                height: 1.4,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 24),
-                      _buildImageUploadSection('Existing'),
-                      const SizedBox(height: 24),
-                      _buildImageUploadSection('Proposed'),
-                      const SizedBox(height: 24),
-                      _buildImageUploadSection('Placement'),
-                      const SizedBox(height: 32),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                    child: const Text(
+                      'Stay',
+                      style: TextStyle(
+                        color: Color(0xFF4A5568),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xff021e84).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
                     ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text(
+                      'Leave Anyway',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+        return shouldPop ?? false;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7FAFC),
+        appBar: AppBar(
+          title: const Text(
+            'Part IV.B - ICT Organizational Structure',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF2D3748),
+          actions: [
+            if (_saving || _compiling)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xff021e84),
+                  ),
+                ),
+              )
+            else ...[
+              if (!_isFinalized)
+                IconButton(
+                  icon: const Icon(Icons.save),
+                  onPressed: _saving ? null : () => _save(finalize: false),
+                  tooltip: 'Save',
+                  color: const Color(0xff021e84),
+                ),
+              IconButton(
+                icon: const Icon(Icons.check),
+                onPressed: _isFinalized ? null : () async {
+                  final confirmed = await showFinalizeConfirmation(
+                    context,
+                    'Part IV.B - ICT Organizational Structure'
+                  );
+                  if (confirmed) {
+                    setState(() => _isFinalized = true);
+                    _save(finalize: true);
+                  }
+                },
+                tooltip: 'Finalize',
+                color: _isFinalized ? Colors.grey : const Color(0xff021e84),
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                onPressed: _compiling ? null : _compileDocx,
+                tooltip: 'Generate DOCX',
+                color: const Color(0xff021e84),
+              ),
+            ],
+          ],
+        ),
+        body: _isFinalized
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock, size: 48, color: Colors.grey),
+                    SizedBox(height: 12),
+                    Text(
+                      'Part IV.B - ICT Organizational Structure has been finalized.',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              )
+            : SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.info_outline,
+                                      color: Color(0xff021e84),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Instructions',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Please upload three images for Part IV.B:\n\n1. Existing ICT Organizational Structure\n2. Proposed ICT Organizational Structure\n3. Placement of the Proposed Organizational Structure in the Agency Organizational Chart\n\nThe images should be in PNG format. You can preview, save, and download the images. Click the document icon in the app bar to generate a DOCX file with all three images.',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFF4A5568),
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        _buildImageUploadSection('Existing'),
+                        const SizedBox(height: 24),
+                        _buildImageUploadSection('Proposed'),
+                        const SizedBox(height: 24),
+                        _buildImageUploadSection('Placement'),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+      ),
     );
   }
 } 

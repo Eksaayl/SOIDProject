@@ -7,6 +7,9 @@ import 'Parts/part_two.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'services/notification_service.dart';
+import 'roles.dart';
+import 'package:provider/provider.dart';
+import 'state/selection_model.dart';
 
 Future<bool> showFinalizeConfirmation(BuildContext context, String sectionName) async {
   return await showDialog<bool>(
@@ -42,11 +45,13 @@ class HorizontalTabsPage extends StatefulWidget {
   State<HorizontalTabsPage> createState() => _HorizontalTabsPageState();
 }
 
-class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
+typedef _HorizontalTabsPageStateBase = State<HorizontalTabsPage>;
+class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerProviderStateMixin {
   int _selectedIndex = 0;
   String? _username;
   bool _hasAccess = false;
   String _userRole = '';
+  late final AnimationController _controller;
 
   final List<Map<String, dynamic>> _tabs = [
     {'label': 'Part I', 'content': const Part1()},
@@ -72,6 +77,16 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
     super.initState();
     _fetchUsername();
     _checkUserAccess();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   Future<void> _checkUserAccess() async {
@@ -86,7 +101,7 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
         final role = (userDoc.data()?['role'] as String?)?.toLowerCase() ?? '';
         setState(() {
           _userRole = role;
-          _hasAccess = role == 'admin' || role == 'editor';
+          _hasAccess = hasAccess(role);
         });
       }
     }
@@ -94,7 +109,12 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
 
   void _markAllAsRead() async {
     if (_username == null) return;
-    final snapshot = await FirebaseFirestore.instance.collection('notifications').get();
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+    final snapshot = await FirebaseFirestore.instance
+      .collection('notifications')
+      .doc(yearRange)
+      .collection('items')
+      .get();
     for (var doc in snapshot.docs) {
       doc.reference.update({
         'readBy.${_username!}': FieldValue.serverTimestamp(),
@@ -104,11 +124,13 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
 
   Future<void> _removeNotification(String notificationId) async {
     try {
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
       await FirebaseFirestore.instance
-          .collection('notifications')
-          .doc(notificationId)
-          .delete();
-      
+        .collection('notifications')
+        .doc(yearRange)
+        .collection('items')
+        .doc(notificationId)
+        .delete();
       setState(() {
         _notifications.removeWhere((n) => n['id'] == notificationId);
       });
@@ -121,8 +143,11 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
 
   Future<void> _dismissNotification(String notificationId) async {
     if (_username == null) return;
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
     await FirebaseFirestore.instance
       .collection('notifications')
+      .doc(yearRange)
+      .collection('items')
       .doc(notificationId)
       .update({'dismissedBy.${_username!}': true});
   }
@@ -135,18 +160,17 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
 
   Future<void> _markNotificationAsRead(String notificationId) async {
     if (_username == null) return;
-    
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
     final doc = await FirebaseFirestore.instance
       .collection('notifications')
+      .doc(yearRange)
+      .collection('items')
       .doc(notificationId)
       .get();
-    
     final data = doc.data();
     if (data == null) return;
-    
     final readBy = data['readBy'] as Map<String, dynamic>? ?? {};
     final expiresAtBy = data['expiresAtBy'] as Map<String, dynamic>? ?? {};
-    
     if (!readBy.containsKey(_username!)) {
       final now = DateTime.now();
       final expiresAt = now.add(const Duration(hours: 24));
@@ -226,17 +250,27 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
       content: SizedBox(
         width: 400,
         child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('notifications').snapshots(),
+          stream: FirebaseFirestore.instance
+            .collection('notifications')
+            .doc(context.watch<SelectionModel>().yearRange)
+            .collection('items')
+            .orderBy('timestamp', descending: true)
+            .snapshots(),
           builder: (context, snapshot) {
+            final yearRange = context.watch<SelectionModel>().yearRange;
+            print('Notification StreamBuilder yearRange: $yearRange');
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-            
             if (snapshot.hasError) {
+              print('Notification StreamBuilder error: ${snapshot.error}');
               return Center(child: Text('Error: ${snapshot.error}'));
             }
-
             final docs = snapshot.data?.docs ?? [];
+            print('Loaded notifications: ${docs.length}');
+            for (var doc in docs) {
+              print('Notification doc: ${doc.data()}');
+            }
             final notifications = docs.map((doc) {
               final data = doc.data() as Map<String, dynamic>;
               final readBy = data['readBy'] as Map<String, dynamic>? ?? {};
@@ -460,10 +494,19 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
                     color: const Color(0xff021e84).withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.hourglass_top,
-                    size: 48,
-                    color: Color(0xff021e84),
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      return Transform.rotate(
+                        angle: _controller.value * 3.1416,  
+                        child: child,
+                      );
+                    },
+                    child: const Icon(
+                      Icons.hourglass_bottom,
+                      size: 48,
+                      color: Color(0xff021e84),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -558,7 +601,11 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
                         },
                       ),
                       StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance.collection('notifications').snapshots(),
+                        stream: FirebaseFirestore.instance
+                          .collection('notifications')
+                          .doc(context.watch<SelectionModel>().yearRange)
+                          .collection('items')
+                          .snapshots(),
                         builder: (context, snapshot) {
                           final userId = FirebaseAuth.instance.currentUser?.uid;
                           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -600,7 +647,11 @@ class _HorizontalTabsPageState extends State<HorizontalTabsPage> {
 
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('notifications').snapshots(),
+              stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .doc(context.watch<SelectionModel>().yearRange)
+                .collection('items')
+                .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());

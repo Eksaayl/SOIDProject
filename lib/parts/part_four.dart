@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../config.dart';
+import '../state/selection_model.dart';
+import 'package:provider/provider.dart';
 
 class Part4 extends StatefulWidget {
   const Part4({super.key});
@@ -20,7 +22,7 @@ class Part4 extends StatefulWidget {
 class _Part4State extends State<Part4> {
   int _selectedIndex = -1;
   bool _isCompiling = false;
-  static const _docId = 'document';
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
 
   Future<void> mergePartIVDocuments(BuildContext context, String documentId) async {
     try {
@@ -29,8 +31,8 @@ class _Part4State extends State<Part4> {
       setState(() => _isCompiling = true);
 
       final sectionRefs = await Future.wait([
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('IV.A').get(),
-        firestore.collection('issp_documents').doc(documentId).collection('sections').doc('IV.B').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('IV.A').get(),
+        firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('IV.B').get(),
       ]);
 
       final notFinalized = <String>[];
@@ -48,8 +50,8 @@ class _Part4State extends State<Part4> {
         return;
       }
 
-      final iv_a_bytes = await storage.ref().child('$documentId/IV.A/document.docx').getData();
-      final iv_b_bytes = await storage.ref().child('$documentId/IV.B/document.docx').getData();
+      final iv_a_bytes = await storage.ref().child('$_yearRange/IV.A/document.docx').getData();
+      final iv_b_bytes = await storage.ref().child('$_yearRange/IV.B/document.docx').getData();
 
       if (iv_a_bytes == null || iv_b_bytes == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -74,23 +76,23 @@ class _Part4State extends State<Part4> {
 
       final mergedBytes = await response.stream.toBytes();
       
-      final mergedRef = storage.ref().child('$documentId/part_iv_merged.docx');
+      final mergedRef = storage.ref().child('$_yearRange/part_iv_merged.docx');
       await mergedRef.putData(mergedBytes);
 
-      await firestore.collection('issp_documents').doc(documentId).update({
-        'partIVMergedPath': '$documentId/part_iv_merged.docx',
+      await firestore.collection('issp_documents').doc(_yearRange).update({
+        'partIVMergedPath': '$_yearRange/part_iv_merged.docx',
         'lastModified': FieldValue.serverTimestamp(),
       });
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_IV_Merged.docx',
+          name: 'Part_IV_Merged_${DateTime.now().millisecondsSinceEpoch}.docx',
           bytes: mergedBytes,
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/Part_IV_Merged.docx');
+        final file = File('${directory.path}/Part_IV_Merged_${DateTime.now().millisecondsSinceEpoch}.docx');
         await file.writeAsBytes(mergedBytes);
       }
 
@@ -144,7 +146,7 @@ class _Part4State extends State<Part4> {
                     const CircularProgressIndicator()
                   else
                     ElevatedButton.icon(
-                      onPressed: () => mergePartIVDocuments(context, _docId),
+                      onPressed: () => mergePartIVDocuments(context, _yearRange),
                       icon: const Icon(Icons.merge_type),
                       label: const Text('Merge All Parts IV'),
                       style: ElevatedButton.styleFrom(
@@ -182,7 +184,7 @@ class _Part4State extends State<Part4> {
                 const CircularProgressIndicator()
               else
                 ElevatedButton.icon(
-                  onPressed: () => mergePartIVDocuments(context, _docId),
+                  onPressed: () => mergePartIVDocuments(context, _yearRange),
                   icon: const Icon(Icons.merge_type),
                   label: const Text('Merge All Parts IV'),
                   style: ElevatedButton.styleFrom(
@@ -209,7 +211,7 @@ class _Part4State extends State<Part4> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => PartIVAFormPage(documentId: _docId),
+                builder: (_) => PartIVAFormPage(documentId: _yearRange),
               ),
             );
             break;
@@ -217,7 +219,7 @@ class _Part4State extends State<Part4> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => PartIVB(documentId: _docId),
+                builder: (_) => PartIVB(documentId: _yearRange),
               ),
             );
             break;

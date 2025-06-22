@@ -19,6 +19,8 @@ import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import '../../state/selection_model.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -197,7 +199,6 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
       coCtl,
       totalCtl;
 
-  // Other Sources of Funds controllers
   final List<Map<String, TextEditingController>> otherFundsControllers = [];
   bool _showOtherFunds = false;
 
@@ -210,12 +211,13 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
   bool _compiling = false;
   String? _fileUrl;
   final _storage = FirebaseStorage.instance;
-  bool _isChecked = false;
 
   late TextEditingController totalProjectCostCtrl;
   late TextEditingController otrFundCtrl;
   late TextEditingController otherFundsCtrl;
   late TextEditingController currDateCtl;
+
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
 
   @override
   void initState() {
@@ -256,11 +258,67 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
-        .doc(widget.documentId)
+        .doc(_yearRange)
         .collection('sections')
         .doc('I.B');
 
+    mooeCtl.addListener(_updateTotal);
+    coCtl.addListener(_updateTotal);
+
+    coPlantilaCtl.addListener(_updatePersonnelTotals);
+    coVacantCtl.addListener(_updatePersonnelTotals);
+    coFilledPlantilaCtl.addListener(_updatePersonnelTotals);
+    coFilledPhysicalCtl.addListener(_updatePersonnelTotals);
+    coCoswsCtl.addListener(_updatePersonnelTotals);
+    coContractualCtl.addListener(_updatePersonnelTotals);
+
+    foPlantilaCtl.addListener(_updatePersonnelTotals);
+    foVacantCtl.addListener(_updatePersonnelTotals);
+    foFilledPlantilaCtl.addListener(_updatePersonnelTotals);
+    foFilledPhysicalCtl.addListener(_updatePersonnelTotals);
+    foCoswsCtl.addListener(_updatePersonnelTotals);
+    foContractualCtl.addListener(_updatePersonnelTotals);
+
     _loadData();
+  }
+
+  void _updateTotal() {
+    final mooe = double.tryParse(mooeCtl.text.replaceAll(',', '')) ?? 0;
+    final co = double.tryParse(coCtl.text.replaceAll(',', '')) ?? 0;
+    final total = mooe + co;
+    final formatted = total == 0 ? '' : total.toStringAsFixed(2);
+    if (totalCtl.text != formatted) {
+      totalCtl.text = formatted;
+    }
+  }
+
+  void _updatePersonnelTotals() {
+    final coFields = [
+      coPlantilaCtl,
+      coVacantCtl,
+      coFilledPlantilaCtl,
+      coFilledPhysicalCtl,
+      coCoswsCtl,
+      coContractualCtl,
+    ];
+    final coTotal = coFields.fold<double>(0, (sum, ctl) => sum + (double.tryParse(ctl.text.replaceAll(',', '')) ?? 0));
+    final coFormatted = coTotal == 0 ? '' : coTotal.toStringAsFixed(2);
+    if (coTotalCtl.text != coFormatted) {
+      coTotalCtl.text = coFormatted;
+    }
+    final foFields = [
+      foPlantilaCtl,
+      foVacantCtl,
+      foFilledPlantilaCtl,
+      foFilledPhysicalCtl,
+      foCoswsCtl,
+      foContractualCtl,
+    ];
+    final foTotal = foFields.fold<double>(0, (sum, ctl) => sum + (double.tryParse(ctl.text.replaceAll(',', '')) ?? 0));
+    final foFormatted = foTotal == 0 ? '' : foTotal.toStringAsFixed(2);
+    if (foTotalCtl.text != foFormatted) {
+      foTotalCtl.text = foFormatted;
+    }
   }
 
   Future<void> _loadData() async {
@@ -268,7 +326,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     try {
       _sectionRef = FirebaseFirestore.instance
           .collection('issp_documents')
-          .doc(widget.documentId)
+          .doc(_yearRange)
           .collection('sections')
           .doc('I.B');
 
@@ -308,12 +366,22 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
           coCtl.text             = data['co']                    ?? '';
           totalCtl.text          = data['total']                 ?? '';
           currDateCtl.text        = data['currDate'] ?? DateFormat('MMMM dd, yyyy').format(DateTime.now());
-
-          final orgStructB64 = data['organizationalStructure'] as String?;
-          if (orgStructB64 != null) {
-            _orgStructureImage = base64Decode(orgStructB64);
-          }
         });
+
+        final orgStructureUrl = data['orgStructureUrl'] as String?;
+        if (orgStructureUrl != null) {
+          try {
+            final ref = FirebaseStorage.instance.refFromURL(orgStructureUrl);
+            final bytes = await ref.getData();
+            if (bytes != null) {
+              setState(() {
+                _orgStructureImage = bytes;
+              });
+            }
+          } catch (e) {
+            print('Failed to load org structure image: $e');
+          }
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -402,8 +470,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     foCoswsCtl.dispose();
     foContractualCtl.dispose();
     foTotalCtl.dispose();
-    
-    // Dispose other funds controllers
+
     for (var controllers in otherFundsControllers) {
       controllers['projectName']?.dispose();
       controllers['projectCost']?.dispose();
@@ -419,7 +486,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
 
   Future<void> _saveData({bool finalize = false}) async {
     if (_uploadedDocxBytes == null && !_formKey.currentState!.validate()) return;
-    if (finalize && !_isChecked) {
+    if (finalize) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please certify the information before finalizing'),
@@ -434,9 +501,8 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     try {
       String? docxUrl;
       final storage = FirebaseStorage.instance;
-      final docxRef = storage.ref().child('${widget.documentId}/I.B/document.docx');
+      final docxRef = storage.ref().child('$_yearRange/I.B/document.docx');
 
-      // Format other funds data
       String otherFundsText = '';
       if (_showOtherFunds && otherFundsControllers.isNotEmpty) {
         otherFundsText = '• Other Sources of Funds:\n';
@@ -451,6 +517,8 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         await docxRef.putData(_uploadedDocxBytes!, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
         docxUrl = await docxRef.getDownloadURL();
       } else {
+        final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+        final formattedYearRange = formatYearRange(yearRange);
         final data = {
           'plannerName': plannerNameCtl.text.trim(),
           'plantillaPosition': positionCtl.text.trim(),
@@ -483,6 +551,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
           'organizationalStructure': _orgStructureImage != null 
               ? base64Encode(_orgStructureImage!)
               : null,
+          'yearRange': formattedYearRange,
         };
 
         final url = Uri.parse('http://localhost:8000/generate-ib-docx/');
@@ -538,11 +607,11 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         'fileUrl': docxUrl,
         'otherFunds': otherFunds,
         'otherFundsTotal': otherFundsCtrl.text.trim(),
-        'isCertified': _isChecked,
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part I.B',
+        'currDate': currDateCtl.text.trim(),
       };
       if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
@@ -555,7 +624,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         _uploadedDocxName = null;
       });
       if (finalize) {
-        await createSubmissionNotification('Part I.B');
+        await createSubmissionNotification('Part I.B', _yearRange);
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
@@ -577,7 +646,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     try {
       final fileName = 'document.docx';
       final storage = FirebaseStorage.instance;
-      final docxRef = storage.ref().child('${widget.documentId}/I.B/document.docx');
+      final docxRef = storage.ref().child('$_yearRange/I.B/document.docx');
       final docxBytes = await docxRef.getData();
       if (docxBytes != null) {
         if (kIsWeb) {
@@ -901,27 +970,49 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         ),
         Padding(
           padding: const EdgeInsets.all(4.0),
-          child: TextFormField(
-            controller: centralCtl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            ),
-            style: style,
-          ),
+          child: isTotal
+              ? TextFormField(
+                  controller: centralCtl,
+                  enabled: false,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  ),
+                  style: style,
+                )
+              : TextFormField(
+                  controller: centralCtl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  ),
+                  style: style,
+                ),
         ),
         Padding(
           padding: const EdgeInsets.all(4.0),
-          child: TextFormField(
-            controller: fieldCtl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            ),
-            style: style,
-          ),
+          child: isTotal
+              ? TextFormField(
+                  controller: fieldCtl,
+                  enabled: false,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  ),
+                  style: style,
+                )
+              : TextFormField(
+                  controller: fieldCtl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  ),
+                  style: style,
+                ),
         ),
       ],
     );
@@ -1085,410 +1176,575 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Part I.B - Department/Agency Profile',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF2D3748),
-        actions: [
-          if (_saving || _compiling)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xff021e84),
-                ),
-              ),
-            )
-          else ...[
-            IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: _isFinalized ? null : () => _saveData(),
-              tooltip: 'Save',
-              color: const Color(0xff021e84),
-            ),
-            IconButton(
-              icon: const Icon(Icons.check),
-              onPressed: _isFinalized ? null : () async {
-                final confirmed = await showFinalizeConfirmation(
-                  context,
-                  'Part I.B - Department/Agency Profile'
-                );
-                if (confirmed) {
-                  _saveData(finalize: true);
-                }
-              },
-              tooltip: 'Finalize',
-              color: _isFinalized ? Colors.grey : const Color(0xff021e84),
-            ),
-            IconButton(
-              icon: const Icon(Icons.file_download),
-              onPressed: _compileDocx,
-              tooltip: 'Compile DOCX',
-              color: const Color(0xff021e84),
-            ),
-          ],
-        ],
-      ),
-      body: _isFinalized
-          ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.lock, size: 48, color: Colors.grey),
-                  SizedBox(height: 12),
-                  Text(
-                    'Part I.B - Department/Agency Profile has been finalized.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
+    return WillPopScope(
+      onWillPop: () async {
+        final shouldPop = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              backgroundColor: Colors.white,
+              elevation: 20,
+              title: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xff021e84), Color(0xff1e40af)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.warning_amber, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Save Before Leaving',
+                        style: TextStyle(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.info_outline,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Instructions',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Please fill in all the required fields below. Make sure all information is accurate and complete before finalizing.',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Color(0xFF4A5568),
-                                height: 1.5,
-                              ),
-                            ),
-                          ],
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.08),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                          border: Border.all(color: Colors.grey.shade200),
+                    ),
+                  ],
+                ),
+              ),
+              content: Container(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff021e84).withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xff021e84).withOpacity(0.1),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.upload_file,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Upload DOCX (optional)',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'You may upload a DOCX file directly instead of using the form. If you upload a DOCX, it will be saved and used for this section.',
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Color(0xff021e84),
+                            size: 20,
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Make sure to save before leaving to avoid losing your work.',
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 16,
                                 color: Color(0xFF4A5568),
                                 height: 1.4,
                               ),
                             ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                ElevatedButton.icon(
-                                  onPressed: _isFinalized ? null : _pickDocxFile,
-                                  icon: const Icon(Icons.upload_file),
-                                  label: const Text('Upload DOCX'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xff021e84),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                if (_uploadedDocxName != null)
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                    child: const Text(
+                      'Stay',
+                      style: TextStyle(
+                        color: Color(0xFF4A5568),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xff021e84).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text(
+                      'Leave Anyway',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+        return shouldPop ?? false;
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF7FAFC),
+        appBar: AppBar(
+          title: const Text(
+            'Part I.B - Department/Agency Profile',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF2D3748),
+          actions: [
+            if (_saving || _compiling)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xff021e84),
+                  ),
+                ),
+              )
+            else ...[
+              IconButton(
+                icon: const Icon(Icons.save),
+                onPressed: _isFinalized ? null : () => _saveData(),
+                tooltip: 'Save',
+                color: const Color(0xff021e84),
+              ),
+              IconButton(
+                icon: const Icon(Icons.check),
+                onPressed: _isFinalized ? null : () async {
+                  final confirmed = await showFinalizeConfirmation(
+                    context,
+                    'Part I.B - Department/Agency Profile'
+                  );
+                  if (confirmed) {
+                    _saveData(finalize: true);
+                  }
+                },
+                tooltip: 'Finalize',
+                color: _isFinalized ? Colors.grey : const Color(0xff021e84),
+              ),
+              IconButton(
+                icon: const Icon(Icons.file_download),
+                onPressed: _compileDocx,
+                tooltip: 'Compile DOCX',
+                color: const Color(0xff021e84),
+              ),
+            ],
+          ],
+        ),
+        body: _isFinalized
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock, size: 48, color: Colors.grey),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Part I.B - Department/Agency Profile has been finalized.',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              )
+            : SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xff021e84).withOpacity(0.07),
+                                      color: const Color(0xff021e84).withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.description, color: Color(0xff021e84), size: 20),
-                                        const SizedBox(width: 6),
-                                        Text(_uploadedDocxName!, style: const TextStyle(fontSize: 15, color: Color(0xFF2D3748))),
-                                      ],
+                                    child: const Icon(
+                                      Icons.info_outline,
+                                      color: Color(0xff021e84),
                                     ),
                                   ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Instructions',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
                                   ),
-                                  child: const Icon(
-                                    Icons.person,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Planner Information',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            _buildField('Planner Name', plannerNameCtl),
-                            _buildField('Plantilla Position', positionCtl),
-                            _buildField('Organizational Unit', unitCtl),
-                            _buildField('Email Address', emailCtl),
-                            _buildField('Contact Numbers', contactCtl),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.attach_money,
-                                    color: Color(0xff021e84),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Budget Information',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            _buildField('MOOE', mooeCtl),
-                            _buildField('CO', coCtl),
-                            _buildField('Total', totalCtl),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Checkbox(
-                                  value: _showOtherFunds,
-                                  onChanged: _isFinalized ? null : (value) {
-                                    setState(() {
-                                      _showOtherFunds = value ?? false;
-                                      if (!_showOtherFunds) {
-                                        for (var controllers in otherFundsControllers) {
-                                          controllers['projectName']?.dispose();
-                                          controllers['projectCost']?.dispose();
-                                        }
-                                        otherFundsControllers.clear();
-                                      }
-                                    });
-                                  },
-                                ),
-                                const Text(
-                                  'Include Other Sources of Funds',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Color(0xFF2D3748),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (_showOtherFunds) ...[
+                                ],
+                              ),
                               const SizedBox(height: 16),
-                              _buildOtherFundsSection(),
+                              const Text(
+                                'Please fill in all the required fields below. Make sure all information is accurate and complete before finalizing.',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFF4A5568),
+                                  height: 1.5,
+                                ),
+                              ),
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      _buildOrgStructureSection(),
-                      const SizedBox(height: 24),
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 2,
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
+                        const SizedBox(height: 24),
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.08),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.upload_file,
+                                      color: Color(0xff021e84),
+                                    ),
                                   ),
-                                  child: const Icon(
-                                    Icons.work,
-                                    color: Color(0xff021e84),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Upload DOCX (optional)',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'You may upload a DOCX file directly instead of using the form. If you upload a DOCX, it will be saved and used for this section.',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: Color(0xFF4A5568),
+                                  height: 1.4,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: _isFinalized ? null : _pickDocxFile,
+                                    icon: const Icon(Icons.upload_file),
+                                    label: const Text('Upload DOCX'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xff021e84),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  if (_uploadedDocxName != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xff021e84).withOpacity(0.07),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.description, color: Color(0xff021e84), size: 20),
+                                          const SizedBox(width: 6),
+                                          Text(_uploadedDocxName!, style: const TextStyle(fontSize: 15, color: Color(0xFF2D3748))),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.person,
+                                      color: Color(0xff021e84),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Planner Information',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              _buildField('Planner Name', plannerNameCtl),
+                              _buildField('Plantilla Position', positionCtl),
+                              _buildField('Organizational Unit', unitCtl),
+                              _buildField('Email Address', emailCtl),
+                              _buildField('Contact Numbers', contactCtl),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.attach_money,
+                                      color: Color(0xff021e84),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Budget Information',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              _buildField('MOOE', mooeCtl),
+                              _buildField('CO', coCtl),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: TextFormField(
+                                  controller: totalCtl,
+                                  enabled: false,
+                                  maxLines: 1,
+                                  decoration: InputDecoration(
+                                    labelText: 'Total',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(color: Colors.grey.shade300),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: BorderSide(color: Colors.grey.shade300),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(color: Color(0xff021e84)),
+                                    ),
+                                    labelStyle: const TextStyle(color: Color(0xFF4A5568)),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Employment Status',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2D3748),
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: _showOtherFunds,
+                                    onChanged: _isFinalized ? null : (value) {
+                                      setState(() {
+                                        _showOtherFunds = value ?? false;
+                                        if (!_showOtherFunds) {
+                                          for (var controllers in otherFundsControllers) {
+                                            controllers['projectName']?.dispose();
+                                            controllers['projectCost']?.dispose();
+                                          }
+                                          otherFundsControllers.clear();
+                                        }
+                                      });
+                                    },
                                   ),
-                                ),
+                                  const Text(
+                                    'Include Other Sources of Funds',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_showOtherFunds) ...[
+                                const SizedBox(height: 16),
+                                _buildOtherFundsSection(),
                               ],
-                            ),
-                            const SizedBox(height: 20),
-                            _buildPersonnelComplementSection(),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
+                        const SizedBox(height: 24),
+                        _buildOrgStructureSection(),
+                        const SizedBox(height: 24),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xff021e84).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.work,
+                                      color: Color(0xff021e84),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Employment Status',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2D3748),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              _buildPersonnelComplementSection(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+      ),
     );
   }
 }

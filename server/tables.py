@@ -6,7 +6,8 @@ def create_iib_docx(systems, output_path):
     for sys in systems:
         table = doc.add_table(rows=8, cols=3)
         table.style = 'Table Grid'
-        table.autofit = False  # Prevent auto-resizing
+        table.autofit = False
+        table.allow_autofit = False
 
         table.cell(0, 0).merge(table.cell(0, 1))
         table.cell(0, 0).text = 'NAME OF INFORMATION SYSTEM/ SUB-SYSTEM'
@@ -53,14 +54,27 @@ def create_iib_docx(systems, output_path):
         table.cell(7, 0).text = 'OWNER'
         table.cell(7, 2).text = sys.get('owner', '')
 
-        # Set the width of each column
-        col1_width = Inches(1.75)   # 4.44 cm
-        col2_width = Inches(1.5)    # Example value, adjust as needed
-        col3_width = Inches(6.19)   # 18.26 cm
+        for i in range(8):
+            cell = table.cell(i, 0)
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.name = 'Palatino Linotype'
+                    run.font.size = Pt(12)
+            if i == 0:
+                cell = table.cell(i, 2)
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.bold = True
+                        run.font.name = 'Palatino Linotype'
+                        run.font.size = Pt(12)
+
+        col1_width = Inches(0.75)   
+        col2_width = Inches(1)    
+        col3_width = Inches(7.19)   
         for i, row in enumerate(table.rows):
-            # For USERS row label, set to 2.6 inches
             if i == 5:
-                row.cells[0].width = Inches(2.6)
+                row.cells[0].width = Inches(0.5)
             else:
                 row.cells[0].width = col1_width
             row.cells[1].width = col2_width
@@ -75,6 +89,7 @@ def create_iic_docx(databases, output_path):
         table = doc.add_table(rows=8, cols=3)
         table.style = 'Table Grid'
         table.autofit = False
+        table.allow_autofit = False
 
         table.cell(0, 0).merge(table.cell(0, 1))
         table.cell(0, 0).text = 'NAME OF DATABASE'
@@ -106,7 +121,7 @@ def create_iic_docx(databases, output_path):
         table.cell(4, 0).text = 'DATA ARCHIVING/STORAGE MEDIA'
         table.cell(4, 2).text = db.get('data_archiving', '')
 
-        # USERS row (INTERNAL)
+        table.cell(5, 0).merge(table.cell(6, 0))
         table.cell(5, 0).text = 'USERS'
         table.cell(5, 1).text = 'INTERNAL'
         internal_users = db.get('users_internal', [])
@@ -114,23 +129,33 @@ def create_iic_docx(databases, output_path):
             internal_users = [internal_users]
         table.cell(5, 2).text = '\n'.join(internal_users)
 
-        # USERS row (EXTERNAL)
-        table.cell(6, 0).text = ''
         table.cell(6, 1).text = 'EXTERNAL'
         table.cell(6, 2).text = db.get('users_external', '')
 
-        # OWNER row
+        table.cell(7, 0).merge(table.cell(7, 1))
         table.cell(7, 0).text = 'OWNER'
-        table.cell(7, 1).text = ''
         table.cell(7, 2).text = db.get('owner', '')
 
-        # Set the width of each column
-        col1_width = Inches(1.75)   # 4.44 cm
-        col2_width = Inches(1.5)    # Example value, adjust as needed
-        col3_width = Inches(6.19)   # 15.73 cm
+        for i in range(8):
+            cell = table.cell(i, 0)
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.name = 'Palatino Linotype'
+                    run.font.size = Pt(12)
+            if i == 0:
+                cell = table.cell(i, 2)
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.bold = True
+                        run.font.name = 'Palatino Linotype'
+                        run.font.size = Pt(12)
+        col1_width = Inches(0.75)   
+        col2_width = Inches(1)    
+        col3_width = Inches(7.19)   
         for i, row in enumerate(table.rows):
             if i == 5:
-                row.cells[0].width = Inches(2.6)
+                row.cells[0].width = Inches(0.5)
             else:
                 row.cells[0].width = col1_width
             row.cells[1].width = col2_width
@@ -140,10 +165,12 @@ def create_iic_docx(databases, output_path):
     doc.save(output_path)
 
 def create_iii_a_docx(projects, output_path):
-    doc = Document('server/template_iii.docx')
+    doc = Document(r'C:/Users/User/Documents/SOIDProject/assets/III_a.docx')
     for project in projects:
         table = doc.add_table(rows=4, cols=2)
         table.style = 'Table Grid'
+        table.autofit = False
+        table.allow_autofit = False
         fields = [
             ('A.1 NAME/TITLE', project.get('name', '')),
             ('A.2 OBJECTIVES', project.get('objectives', '')),
@@ -164,15 +191,36 @@ def create_iii_a_docx(projects, output_path):
                     p.paragraph_format.left_indent = Pt(0)
                     cell.add_paragraph('')
             else:
-                table.cell(i, 1).text = value
+                cell = table.cell(i, 1)
+                cell.text = value
+
+        for i in range(4):
+            cell = table.cell(i, 0)
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.name = 'Palatino Linotype'
+                    run.font.size = Pt(12)
+            if i == 0:
+                cell = table.cell(i, 1)
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.bold = True
+                        run.font.name = 'Palatino Linotype'
+                        run.font.size = Pt(12)
+        for row in table.rows:
+            row.cells[0].width = Inches(1.77165)
+            row.cells[1].width = Inches(7.19)
         doc.add_paragraph()
-    doc.save(output_path) 
+    doc.save(output_path)
 
 def create_iii_b_docx(projects, output_path):
-    doc = Document('server/template_iii.docx')
+    doc = Document(r'C:/Users/User/Documents/SOIDProject/assets/III_b.docx')
     for project in projects:
         table = doc.add_table(rows=6, cols=2)
         table.style = 'Table Grid'
+        table.autofit = False
+        table.allow_autofit = False
         fields = [
             ('A.1 NAME/TITLE', project.get('name', '')),
             ('A.2 OBJECTIVES', project.get('objectives', '')),
@@ -197,9 +245,104 @@ def create_iii_b_docx(projects, output_path):
             else:
                 cell = table.cell(i, 1)
                 cell.text = value
-                if label == 'A.1 NAME/TITLE':
-                    for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
-                            run.bold = True
+
+        for i in range(6):
+            cell = table.cell(i, 0)
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.name = 'Palatino Linotype'
+                    run.font.size = Pt(12)
+            if i == 0:
+                cell = table.cell(i, 1)
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.bold = True
+                        run.font.name = 'Palatino Linotype'
+                        run.font.size = Pt(12)
+        for row in table.rows:
+            row.cells[0].width = Inches(1.77165)
+            row.cells[1].width = Inches(7.19)
         doc.add_paragraph()
     doc.save(output_path)
+
+def create_iiic_logframe_table(data, output_path, doc=None):
+    """
+    data: dict with keys 'intermediate' (list of dicts), 'immediate', 'outputs'
+    doc: optional, an existing Document object to add the table to
+    """
+    if doc is None:
+        doc = Document()
+    intermediate_rows = data.get("intermediate", [])
+    immediate_rows = data.get("immediate", [])
+    outputs_rows = data.get("outputs", [])
+
+    if not isinstance(intermediate_rows, list):
+        intermediate_rows = [intermediate_rows]
+    if not isinstance(immediate_rows, list):
+        immediate_rows = [immediate_rows]
+    if not isinstance(outputs_rows, list):
+        outputs_rows = [outputs_rows]
+
+    total_rows = 1 + len(intermediate_rows) + len(immediate_rows) + len(outputs_rows)
+    table = doc.add_table(rows=total_rows, cols=6)
+    table.style = 'Table Grid'
+    table.autofit = False
+    table.allow_autofit = False
+
+    col_widths = [2.11, 1.97, 0.98, 1.28, 1.05, 1.55]
+    for col_idx, width in enumerate(col_widths):
+        for row in table.rows:
+            row.cells[col_idx].width = Inches(width)
+
+    # Header row
+    headers = [
+        "Hierarchy of targeted results",
+        "Objectively verifiable indicators (OVI)",
+        "Baseline data",
+        "Targets",
+        "Data collection methods",
+        "Responsibility to collect data"
+    ]
+    for i, header in enumerate(headers):
+        cell = table.cell(0, i)
+        cell.text = header
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.bold = True
+                run.font.size = Pt(11)
+
+    sections = [
+        ('Intermediate Outcome:', intermediate_rows),
+        ('Immediate Outcome:', immediate_rows),
+        ('Outputs:', outputs_rows),
+    ]
+    row_idx = 1
+    for label, rows in sections:
+        for idx, row_data in enumerate(rows):
+            cell = table.cell(row_idx, 0)
+            if idx == 0:
+                cell.text = label
+                cell.add_paragraph("")
+            else:
+                cell.text = ""
+            user_value = row_data.get("hierarchy", "")
+            if user_value:
+                for line in user_value.splitlines():
+                    if line.strip():
+                        cell.add_paragraph(line.strip())
+            for col, col_key in enumerate(["ovi", "baseline", "targets", "methods", "responsibility"], start=1):
+                value = row_data.get(col_key, "")
+                cell = table.cell(row_idx, col)
+                cell.text = ""
+                if idx == 0:
+                    cell.add_paragraph("")
+                if value:
+                    for line in value.splitlines():
+                        if line.strip():
+                            cell.add_paragraph(line.strip())
+            row_idx += 1
+
+    doc.save(output_path)
+
+    
