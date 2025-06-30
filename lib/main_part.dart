@@ -250,12 +250,25 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
       content: SizedBox(
         width: 400,
         child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-            .collection('notifications')
-            .doc(context.watch<SelectionModel>().yearRange)
-            .collection('items')
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
+          stream: () {
+            final yearRange = context.watch<SelectionModel>().yearRange;
+            print('Notification StreamBuilder yearRange: $yearRange');
+            if (yearRange == null) {
+              print('Warning: yearRange is null, using default');
+              return FirebaseFirestore.instance
+                .collection('notifications')
+                .doc('2729')
+                .collection('items')
+                .orderBy('timestamp', descending: true)
+                .snapshots();
+            }
+            return FirebaseFirestore.instance
+              .collection('notifications')
+              .doc(yearRange)
+              .collection('items')
+              .orderBy('timestamp', descending: true)
+              .snapshots();
+          }(),
           builder: (context, snapshot) {
             final yearRange = context.watch<SelectionModel>().yearRange;
             print('Notification StreamBuilder yearRange: $yearRange');
@@ -264,7 +277,32 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
             }
             if (snapshot.hasError) {
               print('Notification StreamBuilder error: ${snapshot.error}');
-              return Center(child: Text('Error: ${snapshot.error}'));
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Error loading notifications',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.red[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${snapshot.error}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              );
             }
             final docs = snapshot.data?.docs ?? [];
             print('Loaded notifications: ${docs.length}');
@@ -601,11 +639,21 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
                         },
                       ),
                       StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                          .collection('notifications')
-                          .doc(context.watch<SelectionModel>().yearRange)
-                          .collection('items')
-                          .snapshots(),
+                        stream: () {
+                          final yearRange = context.watch<SelectionModel>().yearRange;
+                          if (yearRange == null) {
+                            return FirebaseFirestore.instance
+                              .collection('notifications')
+                              .doc('2729')
+                              .collection('items')
+                              .snapshots();
+                          }
+                          return FirebaseFirestore.instance
+                            .collection('notifications')
+                            .doc(yearRange)
+                            .collection('items')
+                            .snapshots();
+                        }(),
                         builder: (context, snapshot) {
                           final userId = FirebaseAuth.instance.currentUser?.uid;
                           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -647,11 +695,21 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
 
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                .collection('notifications')
-                .doc(context.watch<SelectionModel>().yearRange)
-                .collection('items')
-                .snapshots(),
+              stream: () {
+                final yearRange = context.watch<SelectionModel>().yearRange;
+                if (yearRange == null) {
+                  return FirebaseFirestore.instance
+                    .collection('notifications')
+                    .doc('2729')
+                    .collection('items')
+                    .snapshots();
+                }
+                return FirebaseFirestore.instance
+                  .collection('notifications')
+                  .doc(yearRange)
+                  .collection('items')
+                  .snapshots();
+              }(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());

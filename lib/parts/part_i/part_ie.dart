@@ -116,11 +116,16 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
   final _storage = FirebaseStorage.instance;
   String get _userId =>
       _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
-  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String get _yearRange {
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+    print('Getting yearRange (Part I.E): $yearRange');
+    return yearRange;
+  }
 
   @override
   void initState() {
     super.initState();
+    print('initState (Part I.E) - yearRange: $_yearRange');
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(_yearRange)
@@ -232,7 +237,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         'fileUrl': fileUrl,
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': _isFinalized,
+        'isFinalized': finalize ? false : _isFinalized,
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part I.E',
         'yearRange': formattedYearRange,
@@ -248,11 +253,21 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
 
       if (finalize) {
         await createSubmissionNotification('Part I.E', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part I.E submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part I.E saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-      );
       
       if (finalize) {
         Navigator.of(context).pop();
@@ -305,35 +320,39 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
     }
   }
 
-  Future<void> _downloadTemplate() async {
+  Future<void> _downloadDocx() async {
+    setState(() => _compiling = true);
     try {
+      final fileName = 'document.docx';
       final storage = FirebaseStorage.instance;
-      final ref = storage.ref().child('$_yearRange/I.E/e.docx');
-      final bytes = await ref.getData();
-      if (bytes != null) {
+      final docxRef = storage.ref().child('$_yearRange/I.E/document.docx');
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
         if (kIsWeb) {
           await FileSaver.instance.saveFile(
-            name: 'Part_I.E_Template.docx',
-            bytes: bytes,
+            name: fileName,
+            bytes: docxBytes,
             mimeType: MimeType.microsoftWord,
           );
         } else {
-          final dir = await getApplicationDocumentsDirectory();
-          final path = '${dir.path}/Part_I.E_Template.docx';
-          await File(path).writeAsBytes(bytes);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Template downloaded to $path')),
-          );
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
         }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Template not found in storage.')),
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error downloading template: $e')),
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
+    } finally {
+      setState(() => _compiling = false);
     }
   }
 
@@ -609,9 +628,9 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
                               Row(
                                 children: [
                                   ElevatedButton.icon(
-                                    onPressed: _downloadTemplate,
+                                    onPressed: _downloadDocx,
                                     icon: const Icon(Icons.download),
-                                    label: const Text('Download Part I.E Template'),
+                                    label: const Text('Download DOCX'),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Color(0xff021e84),
                                       foregroundColor: Colors.white,

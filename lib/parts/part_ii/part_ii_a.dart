@@ -29,6 +29,7 @@ String xmlEscape(String input) => input
 
 Future<Uint8List> generateDocxWithImages({
   required Map<String, Uint8List> images,
+  required Map<String, String> replacements,
 }) async {
   try {
     final request = http.MultipartRequest(
@@ -73,7 +74,80 @@ Future<Uint8List> generateDocxWithImages({
     }
 
     final bytes = await response.stream.toBytes();
-    return Uint8List.fromList(bytes);
+    
+    final archive = ZipDecoder().decodeBytes(bytes);
+    
+    final headerFiles = archive.where((f) => f.name.contains('header') && f.name.endsWith('.xml')).toList();
+    for (final headerFile in headerFiles) {
+      var headerXml = utf8.decode(headerFile.content as List<int>);
+      
+      print('Processing header file: ${headerFile.name}');
+      
+      final complexPattern = RegExp(
+        r'\$\{</w:t></w:r>.*?<w:t>yearRange</w:t>.*?<w:t>\}',
+        dotAll: true,
+      );
+      
+      final beforeReplacement = headerXml;
+      headerXml = headerXml.replaceAllMapped(complexPattern, (match) {
+        print('✓ Matched complex yearRange placeholder in ${headerFile.name}!');
+        final yearRange = replacements['yearRange'] ?? '';
+        return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$yearRange</w:t></w:r>''';
+      });
+      
+      final simplePattern = RegExp(r'\$\{yearRange\}');
+      headerXml = headerXml.replaceAllMapped(simplePattern, (match) {
+        print('✓ Matched simple yearRange placeholder in ${headerFile.name}!');
+        final yearRange = replacements['yearRange'] ?? '';
+        return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$yearRange</w:t></w:r>''';
+      });
+      
+      if (beforeReplacement != headerXml) {
+        print('✓ Header replacement successful for ${headerFile.name}');
+      } else {
+        print('✗ No yearRange placeholders found in ${headerFile.name}');
+      }
+      
+      archive.addFile(ArchiveFile(headerFile.name, utf8.encode(headerXml).length, utf8.encode(headerXml)));
+    }
+
+    final footerFiles = archive.where((f) => f.name.contains('footer') && f.name.endsWith('.xml')).toList();
+    for (final footerFile in footerFiles) {
+      var footerXml = utf8.decode(footerFile.content as List<int>);
+      
+      print('Processing footer file: ${footerFile.name}');
+      
+      final complexPattern = RegExp(
+        r'\$\{</w:t></w:r>.*?<w:t>yearRange</w:t>.*?<w:t>\}',
+        dotAll: true,
+      );
+      
+      final beforeReplacement = footerXml;
+      footerXml = footerXml.replaceAllMapped(complexPattern, (match) {
+        print('✓ Matched complex yearRange placeholder in ${footerFile.name}!');
+        final yearRange = replacements['yearRange'] ?? '';
+        return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$yearRange</w:t></w:r>''';
+      });
+      
+      final simplePattern = RegExp(r'\$\{yearRange\}');
+      footerXml = footerXml.replaceAllMapped(simplePattern, (match) {
+        print('✓ Matched simple yearRange placeholder in ${footerFile.name}!');
+        final yearRange = replacements['yearRange'] ?? '';
+        return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$yearRange</w:t></w:r>''';
+      });
+      
+      if (beforeReplacement != footerXml) {
+        print('✓ Footer replacement successful for ${footerFile.name}');
+      } else {
+        print('✗ No yearRange placeholders found in ${footerFile.name}');
+      }
+      
+      archive.addFile(ArchiveFile(footerFile.name, utf8.encode(footerXml).length, utf8.encode(footerXml)));
+    }
+
+    final out = ZipEncoder().encode(archive)!;
+    return Uint8List.fromList(out);
+    
   } catch (e) {
     print('Error generating DOCX: $e');
     rethrow;
@@ -106,11 +180,16 @@ class _PartIIAState extends State<PartIIA> {
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
   final _storage = FirebaseStorage.instance;
-  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String get _yearRange {
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+    print('Getting yearRange (Part II.A): $yearRange');
+    return yearRange;
+  }
 
   @override
   void initState() {
     super.initState();
+    print('initState (Part II.A) - yearRange: $_yearRange');
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(_yearRange)
@@ -237,12 +316,14 @@ class _PartIIAState extends State<PartIIA> {
     try {
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
+      final formattedYearRange = formatYearRange(_yearRange);
       final payload = {
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part II.A',
-        'isFinalized': _isFinalized,
+        'isFinalized': finalize ? false : _isFinalized,
+        'yearRange': formattedYearRange,
       };
 
       if (!_isFinalized) {
@@ -260,6 +341,9 @@ class _PartIIAState extends State<PartIIA> {
               'ISI': _isiBytes!,
               'ISII': _isiiBytes!,
               'ISIII': _isiiiBytes!,
+            },
+            replacements: {
+              'yearRange': formattedYearRange,
             },
           );
           final docxRef = _storage.ref().child('$_yearRange/II.A/document.docx');
@@ -279,11 +363,21 @@ class _PartIIAState extends State<PartIIA> {
 
       if (finalize) {
         await createSubmissionNotification('Part II.A', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part II.A submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part II.A saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-      );
       
       if (finalize) {
         Navigator.of(context).pop();
@@ -297,38 +391,36 @@ class _PartIIAState extends State<PartIIA> {
     }
   }
 
-  Future<void> _compileDocx() async {
+  Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
-      final docxRef = _storage.ref().child('$_yearRange/II.A/document.docx');
-      final bytes = await docxRef.getData();
-      
-      if (bytes == null) {
+      final fileName = 'document.docx';
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('$_yearRange/II.A/document.docx');
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: docxBytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No DOCX file found. Please save the form first to generate the document.'))
-        );
-        return;
-      }
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: 'Part_II_A_$_yearRange.docx',
-          bytes: bytes,
-          mimeType: MimeType.microsoftWord,
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
         );
       } else {
-        final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/document.docx';
-        final file = File(path);
-        await file.writeAsBytes(bytes);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.')),
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('DOCX downloaded successfully'))
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error downloading DOCX: $e'))
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
     } finally {
       setState(() => _compiling = false);
@@ -672,7 +764,7 @@ class _PartIIAState extends State<PartIIA> {
               ),
               IconButton(
                 icon: const Icon(Icons.file_download),
-                onPressed: _compiling ? null : _compileDocx,
+                onPressed: _compiling ? null : _downloadDocx,
                 tooltip: 'Download DOCX',
                 color: const Color(0xff021e84),
               ),

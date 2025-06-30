@@ -146,16 +146,12 @@ class AdminDashboard extends StatelessWidget {
           'screenedBy': await getCurrentUsername(),
           'rejectionMessage': rejectionMessage,
         });
-        await createNotification(
-          'Section Rejected',
-          'Your section "$sectionName" has been rejected.${rejectionMessage != null ? ' Reason: $rejectionMessage' : ''}',
-          yearRange,
-        );
+        await createRejectionNotification(sectionName, rejectionMessage ?? 'No reason provided', yearRange);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(approved ? 'Section approved successfully' : 'Section rejected successfully'),
+          content: Text(approved ? 'Section approved and finalized successfully' : 'Section rejected successfully'),
           backgroundColor: approved ? Colors.green : Colors.red,
         ),
       );

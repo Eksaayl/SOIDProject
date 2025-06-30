@@ -22,8 +22,26 @@ class PartIIIA extends StatefulWidget {
   State<PartIIIA> createState() => _PartIIIAState();
 }
 
+class ProjectFormData {
+  final TextEditingController name;
+  final TextEditingController objectives;
+  final TextEditingController duration;
+  final TextEditingController deliverables;
+  List<String> savedSubRoles;
+  String submittedBy;
+
+  ProjectFormData({
+    required this.name,
+    required this.objectives,
+    required this.duration,
+    required this.deliverables,
+    required this.savedSubRoles,
+    required this.submittedBy,
+  });
+}
+
 class _PartIIIAState extends State<PartIIIA> {
-  List<Map<String, TextEditingController>> projectControllers = [];
+  List<ProjectFormData> projectControllers = [];
   bool _generating = false;
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
@@ -32,17 +50,87 @@ class _PartIIIAState extends State<PartIIIA> {
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String _userRole = '';
+  List<String> _userSubRoles = [];
+  bool _userHasProjectInAnySection = false;
 
   @override
   void initState() {
     super.initState();
-    addProject();
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(_yearRange)
         .collection('sections')
         .doc('III.A');
     _loadContent();
+    _fetchUserRoleAndCheckBothSections();
+  }
+
+  Future<void> _fetchUserRoleAndCheckBothSections() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      setState(() {
+        _userRole = userDoc.data()?['role'] ?? '';
+        _userSubRoles = List<String>.from(userDoc.data()?['sub_roles'] ?? []);
+      });
+      await _checkUserHasProjectInAnySection();
+      _AddBlankProject();
+    }
+  }
+
+  Future<void> _checkUserHasProjectInAnySection() async {
+    final firestore = FirebaseFirestore.instance;
+    final iiiA = await firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('III.A').get();
+    final iiiB = await firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('III.B').get();
+    bool found = false;
+    for (final doc in [iiiA, iiiB]) {
+      if (doc.exists && doc.data() != null) {
+        final projects = doc.data()!['projects'] as List<dynamic>? ?? [];
+        for (final proj in projects) {
+          final savedSubRoles = List<String>.from(proj['sub_roles'] ?? []);
+          if (savedSubRoles.isNotEmpty && _userSubRoles.any((userSubRole) => savedSubRoles.contains(userSubRole))) {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (found) break;
+    }
+    setState(() {
+      _userHasProjectInAnySection = found;
+    });
+  }
+
+  // Check if user can edit a specific project
+  bool _canEditProject(ProjectFormData project) {
+    if (_userRole == 'admin') return true;
+    if (_userSubRoles.isEmpty) return true;
+    
+    // Check if user's sub-roles match the project's sub-roles
+    return project.savedSubRoles.isNotEmpty && 
+           _userSubRoles.any((userSubRole) => project.savedSubRoles.contains(userSubRole));
+  }
+
+  // Check if user can add a new project
+  bool _canAddProject() {
+    if (_userRole == 'admin') return true;
+    if (_userSubRoles.isEmpty) return true;
+    
+    // Check if user already has a project in this section
+    final userProjectsInThisSection = projectControllers.where((project) => 
+      _canEditProject(project)
+    ).length;
+    
+    return userProjectsInThisSection == 0;
+  }
+
+  // Get projects that user can edit
+  List<ProjectFormData> get _editableProjects {
+    if (_userRole == 'admin') return projectControllers;
+    if (_userSubRoles.isEmpty) return projectControllers;
+    
+    return projectControllers.where((project) => _canEditProject(project)).toList();
   }
 
   Future<void> _loadContent() async {
@@ -57,14 +145,15 @@ class _PartIIIAState extends State<PartIIIA> {
           final List projects = data['projects'];
           projectControllers.clear();
           for (var project in projects) {
-            projectControllers.add({
-              'name': TextEditingController(text: project['name'] ?? ''),
-              'objectives': TextEditingController(text: project['objectives'] ?? ''),
-              'duration': TextEditingController(text: project['duration'] ?? ''),
-              'deliverables': TextEditingController(text: (project['deliverables'] is List ? (project['deliverables'] as List).join('\n') : (project['deliverables'] ?? ''))),
-            });
+            projectControllers.add(ProjectFormData(
+              name: TextEditingController(text: project['name'] ?? ''),
+              objectives: TextEditingController(text: project['objectives'] ?? ''),
+              duration: TextEditingController(text: project['duration'] ?? ''),
+              deliverables: TextEditingController(text: (project['deliverables'] is List ? (project['deliverables'] as List).join('\n') : (project['deliverables'] ?? ''))),
+              savedSubRoles: List<String>.from(project['sub_roles'] ?? []),
+              submittedBy: project['submitted_by'] ?? '',
+            ));
           }
-          if (projectControllers.isEmpty) addProject();
         }
       }
     } catch (e) {
@@ -73,23 +162,34 @@ class _PartIIIAState extends State<PartIIIA> {
       );
     }
     setState(() {});
+    _AddBlankProject();
+  }
+
+  void _AddBlankProject() {
+    if (projectControllers.isEmpty && (_userRole == 'admin' || _userSubRoles.isEmpty)) {
+      addProject();
+    }
   }
 
   Future<String?> _generateAndUploadDocx() async {
     try {
       final projects = projectControllers.map((controllers) {
         return {
-          'name': controllers['name']!.text,
-          'objectives': controllers['objectives']!.text,
-          'duration': controllers['duration']!.text,
-          'deliverables': controllers['deliverables']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+          'name': controllers.name.text,
+          'objectives': controllers.objectives.text,
+          'duration': controllers.duration.text,
+          'deliverables': controllers.deliverables.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
         };
       }).toList();
 
+      final formattedYearRange = formatYearRange(_yearRange);
       final url = Uri.parse('http://localhost:8000/generate-iii-a-docx/');
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'yearrange': formattedYearRange,
+        },
         body: jsonEncode(projects),
       );
 
@@ -153,10 +253,12 @@ class _PartIIIAState extends State<PartIIIA> {
       
       final projects = projectControllers.map((controllers) {
         return {
-          'name': controllers['name']!.text,
-          'objectives': controllers['objectives']!.text,
-          'duration': controllers['duration']!.text,
-          'deliverables': controllers['deliverables']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+          'name': controllers.name.text,
+          'objectives': controllers.objectives.text,
+          'duration': controllers.duration.text,
+          'deliverables': controllers.deliverables.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+          'sub_roles': controllers.savedSubRoles,
+          'submitted_by': username,
         };
       }).toList();
       
@@ -166,7 +268,7 @@ class _PartIIIAState extends State<PartIIIA> {
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part III.A',
-        'isFinalized': _isFinalized,
+        'isFinalized': finalize ? false : _isFinalized,
       };
 
       if (!_isFinalized) {
@@ -185,11 +287,22 @@ class _PartIIIAState extends State<PartIIIA> {
 
       if (finalize) {
         await createSubmissionNotification('Part III.A', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part III.A submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part III.A saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFinalized ? 'Finalized' : 'Saved (not finalized)'))
-      );
     } catch (e) {
       print('Error in saveContent: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -201,18 +314,47 @@ class _PartIIIAState extends State<PartIIIA> {
   }
 
   void addProject() {
-    projectControllers.add({
-      'name': TextEditingController(),
-      'objectives': TextEditingController(),
-      'duration': TextEditingController(),
-      'deliverables': TextEditingController(),
-    });
+    if (!_canAddProject()) return;
+    projectControllers.add(ProjectFormData(
+      name: TextEditingController(),
+      objectives: TextEditingController(),
+      duration: TextEditingController(),
+      deliverables: TextEditingController(),
+      savedSubRoles: List<String>.from(_userSubRoles),
+      submittedBy: _userId,
+    ));
     setState(() {});
   }
 
   void removeProject(int index) {
+    final project = projectControllers[index];
+    if (!_canEditProject(project)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You can only remove projects that belong to your sub-role.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
     projectControllers.removeAt(index);
     setState(() {});
+    _updateProjectsInFirestore();
+  }
+
+  Future<void> _updateProjectsInFirestore() async {
+    final projects = projectControllers.map((controllers) {
+      return {
+        'name': controllers.name.text,
+        'objectives': controllers.objectives.text,
+        'duration': controllers.duration.text,
+        'deliverables': controllers.deliverables.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+        'sub_roles': controllers.savedSubRoles,
+        'submitted_by': controllers.submittedBy,
+      };
+    }).toList();
+    await _sectionRef.set({'projects': projects}, SetOptions(merge: true));
   }
 
   Future<void> _showRemoveConfirmation(int index) async {
@@ -359,7 +501,11 @@ class _PartIIIAState extends State<PartIIIA> {
     }
   }
 
-  Widget projectTableForm(Map<String, TextEditingController> controllers, int index) {
+  Widget projectTableForm(ProjectFormData controllers, int index) {
+    final savedSubRoles = controllers.savedSubRoles;
+    final canEdit = _userRole == 'admin' ||
+        _userSubRoles.isEmpty ||
+        (savedSubRoles.isNotEmpty && savedSubRoles.any((savedSubRole) => _userSubRoles.contains(savedSubRole)));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -367,7 +513,7 @@ class _PartIIIAState extends State<PartIIIA> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('Project ${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            if (!_isFinalized && projectControllers.length > 1)
+            if (!_isFinalized && projectControllers.length > 1 && canEdit)
               IconButton(
                 icon: const Icon(Icons.delete, color: Colors.red),
                 onPressed: () => _showRemoveConfirmation(index),
@@ -395,8 +541,8 @@ class _PartIIIAState extends State<PartIIIA> {
               Padding(
                 padding: EdgeInsets.all(8),
                 child: TextFormField(
-                  controller: controllers['name'],
-                  enabled: !_isFinalized,
+                  controller: controllers.name,
+                  enabled: !_isFinalized && canEdit,
                 ),
               ),
             ]),
@@ -422,20 +568,20 @@ class _PartIIIAState extends State<PartIIIA> {
                   children: [
                     Expanded(
                       child: TextFormField(
-                        controller: controllers['objectives'],
+                        controller: controllers.objectives,
                         maxLines: 4,
-                        enabled: !_isFinalized,
+                        enabled: !_isFinalized && canEdit,
                         decoration: InputDecoration(
                           hintText: 'One per line for bullets',
                         ),
                       ),
                     ),
-                    if (!_isFinalized)
+                    if (!_isFinalized && canEdit)
                       IconButton(
                         icon: Icon(Icons.format_list_bulleted),
                         tooltip: 'Insert bullet',
                         onPressed: () {
-                          final controller = controllers['objectives']!;
+                          final controller = controllers.objectives;
                           final text = controller.text;
                           final selection = controller.selection;
                           final newText = text.replaceRange(
@@ -469,8 +615,8 @@ class _PartIIIAState extends State<PartIIIA> {
               Padding(
                 padding: EdgeInsets.all(8),
                 child: TextFormField(
-                  controller: controllers['duration'],
-                  enabled: !_isFinalized,
+                  controller: controllers.duration,
+                  enabled: !_isFinalized && canEdit,
                   decoration: InputDecoration(
                     hintText: 'Enter the project duration',
                   ),
@@ -499,20 +645,20 @@ class _PartIIIAState extends State<PartIIIA> {
                   children: [
                     Expanded(
                       child: TextFormField(
-                        controller: controllers['deliverables'],
+                        controller: controllers.deliverables,
                         maxLines: 4,
-                        enabled: !_isFinalized,
+                        enabled: !_isFinalized && canEdit,
                         decoration: InputDecoration(
                           hintText: 'One per line for bullets',
                         ),
                       ),
                     ),
-                    if (!_isFinalized)
+                    if (!_isFinalized && canEdit)
                       IconButton(
                         icon: Icon(Icons.format_list_bulleted),
                         tooltip: 'Insert bullet',
                         onPressed: () {
-                          final controller = controllers['deliverables']!;
+                          final controller = controllers.deliverables;
                           final text = controller.text;
                           final selection = controller.selection;
                           final newText = text.replaceRange(
@@ -534,14 +680,13 @@ class _PartIIIAState extends State<PartIIIA> {
     );
   }
 
-  Future<void> generateAndDownloadDocx() async {
+  Future<void> _downloadDocx() async {
     setState(() => _generating = true);
     try {
       final fileName = 'document.docx';
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/III.A/document.docx');
       final docxBytes = await docxRef.getData();
-      
       if (docxBytes != null) {
         if (kIsWeb) {
           await FileSaver.instance.saveFile(
@@ -564,7 +709,7 @@ class _PartIIIAState extends State<PartIIIA> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error downloading DOCX: $e')),
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
     } finally {
       setState(() => _generating = false);
@@ -759,8 +904,8 @@ class _PartIIIAState extends State<PartIIIA> {
               ),
               IconButton(
                 icon: const Icon(Icons.file_download),
-                onPressed: _generating ? null : generateAndDownloadDocx,
-                tooltip: 'Generate DOCX',
+                onPressed: _generating ? null : _downloadDocx,
+                tooltip: 'Download DOCX',
                 color: const Color(0xff021e84),
               ),
             ],
@@ -831,7 +976,7 @@ class _PartIIIAState extends State<PartIIIA> {
                               ),
                               const SizedBox(height: 16),
                               const Text(
-                                'Please fill in all the required fields for each ICT project. You can add multiple projects as needed. Each project will be exported as a table in the DOCX. Make sure all information is accurate and complete before generating the document.',
+                                'Please fill in all the required fields for each ICT project. You can add multiple projects as needed. Each project can be dragged and placed wherever you want to change its order. The top project will be Rank 1, the next will be Rank 2, and so on. Each project will be exported as a table in the DOCX. Make sure all information is accurate and complete before generating the document.',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Color(0xFF4A5568),
@@ -842,43 +987,89 @@ class _PartIIIAState extends State<PartIIIA> {
                           ),
                         ),
                         const SizedBox(height: 24),
-                        ...projectControllers.asMap().entries.map((entry) =>
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 24),
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(15),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withOpacity(0.1),
-                                  spreadRadius: 2,
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
+                        if (_userRole == 'admin')
+                          ReorderableListView(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            onReorder: (oldIndex, newIndex) {
+                              setState(() {
+                                if (newIndex > oldIndex) newIndex -= 1;
+                                final item = projectControllers.removeAt(oldIndex);
+                                projectControllers.insert(newIndex, item);
+                              });
+                            },
+                            children: [
+                              for (final entry in projectControllers.asMap().entries)
+                                Container(
+                                  key: ValueKey('project_${entry.key}'),
+                                  margin: const EdgeInsets.only(bottom: 24),
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(15),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.grey.withOpacity(0.1),
+                                        spreadRadius: 2,
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                    border: Border.all(color: Colors.grey.shade200),
+                                  ),
+                                  child: projectTableForm(entry.value, entry.key),
                                 ),
-                              ],
-                              border: Border.all(color: Colors.grey.shade200),
-                            ),
-                            child: projectTableForm(entry.value, entry.key),
+                            ],
+                          )
+                        else
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: projectControllers.length,
+                            itemBuilder: (context, index) {
+                              final controllers = projectControllers[index];
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 24),
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(15),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      spreadRadius: 2,
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                  border: Border.all(color: Colors.grey.shade200),
+                                ),
+                                child: projectTableForm(controllers, index),
+                              );
+                            },
                           ),
-                        ),
                         if (!_isFinalized)
                           Center(
-                            child: ElevatedButton.icon(
-                              onPressed: addProject,
-                              icon: const Icon(Icons.add, color: Colors.white),
-                              label: const Text(
-                                'Add Project',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xff021e84),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                            child: Tooltip(
+                              message: (_userRole != 'admin' && _userSubRoles.isNotEmpty && _userHasProjectInAnySection)
+                                  ? 'You can only add one project as a focal person tied to a project unless you are an admin.'
+                                  : '',
+                              child: ElevatedButton.icon(
+                                onPressed: _canAddProject() ? addProject : null,
+                                icon: const Icon(Icons.add, color: Colors.white),
+                                label: const Text(
+                                  'Add Project',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                                 ),
-                                elevation: 2,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xff021e84),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  elevation: 2,
+                                ),
                               ),
                             ),
                           ),

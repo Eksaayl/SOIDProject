@@ -486,22 +486,26 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
 
   Future<void> _saveData({bool finalize = false}) async {
     if (_uploadedDocxBytes == null && !_formKey.currentState!.validate()) return;
-    if (finalize) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please certify the information before finalizing'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
     setState(() => _saving = true);
 
     try {
       String? docxUrl;
+      String? orgStructureUrl;
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/I.B/document.docx');
+
+      if (_orgStructureImage != null) {
+        try {
+          final orgStructureRef = storage.ref().child('$_yearRange/I.B/org_structure.png');
+          await orgStructureRef.putData(_orgStructureImage!, SettableMetadata(contentType: 'image/png'));
+          orgStructureUrl = await orgStructureRef.getDownloadURL();
+        } catch (e) {
+          print('Error uploading org structure image: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error uploading image: $e'))
+          );
+        }
+      }
 
       String otherFundsText = '';
       if (_showOtherFunds && otherFundsControllers.isNotEmpty) {
@@ -605,12 +609,14 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         'foTotal': foTotalCtl.text.trim(),
         'otrFund': otherFundsText,
         'fileUrl': docxUrl,
+        'orgStructureUrl': orgStructureUrl,
         'otherFunds': otherFunds,
         'otherFundsTotal': otherFundsCtrl.text.trim(),
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part I.B',
+        'isFinalized': finalize ? false : _isFinalized,
         'currDate': currDateCtl.text.trim(),
       };
       if (!_isFinalized) {
@@ -625,10 +631,21 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
       });
       if (finalize) {
         await createSubmissionNotification('Part I.B', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part I.B submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part I.B saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-      );
       if (finalize) {
         Navigator.of(context).pop();
       }
@@ -641,7 +658,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     }
   }
 
-  Future<void> _compileDocx() async {
+  Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
       final fileName = 'document.docx';
@@ -1363,8 +1380,8 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
               ),
               IconButton(
                 icon: const Icon(Icons.file_download),
-                onPressed: _compileDocx,
-                tooltip: 'Compile DOCX',
+                onPressed: _downloadDocx,
+                tooltip: 'Download DOCX',
                 color: const Color(0xff021e84),
               ),
             ],

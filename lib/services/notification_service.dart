@@ -29,8 +29,8 @@ Future<void> createNotification(String title, String body, String yearRange) asy
 Future<void> createSubmissionNotification(String sectionName, String yearRange) async {
   final username = await getCurrentUsername();
   await createNotification(
-    'New Submission',
-    '$sectionName has been submitted for review by $username.',
+    'Section Submitted for Review',
+    '$sectionName has been submitted for admin approval by $username.',
     yearRange,
   );
 }
@@ -38,8 +38,8 @@ Future<void> createSubmissionNotification(String sectionName, String yearRange) 
 Future<void> createFinalizationNotification(String sectionName, String yearRange) async {
   final username = await getCurrentUsername();
   await createNotification(
-    'Section Finalized',
-    '$sectionName has been finalized by $username(Admin).',
+    'Section Approved and Finalized',
+    '$sectionName has been approved and finalized by $username (Admin).',
     yearRange,
   );
 }
@@ -48,7 +48,16 @@ Future<void> createRejectionNotification(String sectionName, String message, Str
   final username = await getCurrentUsername();
   await createNotification(
     'Section Rejected',
-    '$sectionName has been rejected by $username(Admin).\nReason: $message',
+    '$sectionName has been rejected by $username (Admin).\nReason: $message',
+    yearRange,
+  );
+}
+
+Future<void> createUnfinalizationNotification(String sectionName, String yearRange) async {
+  final username = await getCurrentUsername();
+  await createNotification(
+    'Section Unfinalized',
+    '$sectionName has been unfinalized by $username (Admin).',
     yearRange,
   );
 } 

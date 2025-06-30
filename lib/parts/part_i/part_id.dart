@@ -116,11 +116,16 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
   final _storage = FirebaseStorage.instance;
   String get _userId =>
       _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
-  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String get _yearRange {
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+    print('Getting yearRange (Part I.D): $yearRange');
+    return yearRange;
+  }
 
   @override
   void initState() {
     super.initState();
+    print('initState (Part I.D) - yearRange: $_yearRange');
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(_yearRange)
@@ -221,18 +226,31 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     setState(() => _saving = true);
 
     try {
-      final fileUrl = await _uploadToStorage();
+      final formattedYearRange = formatYearRange(_yearRange);
+      final replacements = {
+        'yearRange': formattedYearRange,
+      };
+
+      final processedDocxBytes = await generateDocxBySearchReplace(
+        assetPath: 'assets/d.docx', 
+        replacements: replacements,
+      );
+
+      final storageRef = _storage.ref()
+          .child('$_yearRange/I.D/document.docx');
+
+      final uploadTask = storageRef.putData(processedDocxBytes);
+      final snapshot = await uploadTask;
+      final fileUrl = await snapshot.ref.getDownloadURL();
 
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
-      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
-      final formattedYearRange = formatYearRange(yearRange);
       final payload = {
         'fileName': _fileName,
         'fileUrl': fileUrl,
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': _isFinalized,
+        'isFinalized': finalize ? false : _isFinalized,
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part I.D',
         'yearRange': formattedYearRange,
@@ -248,11 +266,21 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
       if (finalize) {
         await createSubmissionNotification('Part I.D', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part I.D submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part I.D saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-      );
       
       if (finalize) {
         Navigator.of(context).pop();
@@ -267,7 +295,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
   }
 
   Future<void> _compileDocx() async {
-    if (_fileUrl == null) {
+    if (_uploadedFileBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please upload a document first'))
       );
@@ -276,22 +304,27 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
     setState(() => _compiling = true);
     try {
-      final ref = _storage.refFromURL(_fileUrl!);
-      final bytes = await ref.getData();
-      
-      if (bytes == null) throw Exception('Failed to download file');
+      final formattedYearRange = formatYearRange(_yearRange);
+      final replacements = {
+        'yearRange': formattedYearRange,
+      };
+
+      final processedDocxBytes = await generateDocxBySearchReplace(
+        assetPath: 'assets/d.docx', 
+        replacements: replacements,
+      );
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
           name: 'document.docx',
-          bytes: bytes,
+          bytes: processedDocxBytes,
           ext: 'docx',
           mimeType: MimeType.microsoftWord,
         );
       } else {
         final dir = await getApplicationDocumentsDirectory();
         final path = '${dir.path}/document.docx';
-        await File(path).writeAsBytes(bytes);
+        await File(path).writeAsBytes(processedDocxBytes);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Compiled to $path'))
         );
@@ -305,35 +338,39 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     }
   }
 
-  Future<void> _downloadTemplate() async {
+  Future<void> _downloadDocx() async {
+    setState(() => _compiling = true);
     try {
+      final fileName = 'document.docx';
       final storage = FirebaseStorage.instance;
-      final ref = storage.ref().child('$_yearRange/I.D/d.docx');
-      final bytes = await ref.getData();
-      if (bytes != null) {
+      final docxRef = storage.ref().child('$_yearRange/I.D/document.docx');
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
         if (kIsWeb) {
           await FileSaver.instance.saveFile(
-            name: 'Part_I.D_Template.docx',
-            bytes: bytes,
+            name: fileName,
+            bytes: docxBytes,
             mimeType: MimeType.microsoftWord,
           );
         } else {
-          final dir = await getApplicationDocumentsDirectory();
-          final path = '${dir.path}/Part_I.D_Template.docx';
-          await File(path).writeAsBytes(bytes);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Template downloaded to $path')),
-          );
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
         }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Template not found in storage.')),
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error downloading template: $e')),
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
+    } finally {
+      setState(() => _compiling = false);
     }
   }
 
@@ -610,7 +647,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
                               Row(
                                 children: [
                                   ElevatedButton.icon(
-                                    onPressed: _downloadTemplate,
+                                    onPressed: _downloadDocx,
                                     icon: const Icon(Icons.download),
                                     label: const Text('Download Part I.D Template'),
                                     style: ElevatedButton.styleFrom(

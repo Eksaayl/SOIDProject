@@ -31,11 +31,16 @@ class _PartIIBState extends State<PartIIB> {
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
-  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String get _yearRange {
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+    print('Getting yearRange (Part II.B): $yearRange');
+    return yearRange;
+  }
 
   @override
   void initState() {
     super.initState();
+    print('initState (Part II.B) - yearRange: $_yearRange');
     addSystem();
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
@@ -86,12 +91,14 @@ class _PartIIBState extends State<PartIIB> {
     try {
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
+      final formattedYearRange = formatYearRange(_yearRange);
       final payload = {
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part II.B',
-        'isFinalized': _isFinalized,
+        'isFinalized': finalize ? false : _isFinalized,
+        'yearRange': formattedYearRange,
       };
 
       if (!_isFinalized) {
@@ -160,11 +167,21 @@ class _PartIIBState extends State<PartIIB> {
 
       if (finalize) {
         await createSubmissionNotification('Part II.B', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part II.B submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part II.B saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-      );
       
       if (finalize) {
         Navigator.of(context).pop();
@@ -579,38 +596,36 @@ class _PartIIBState extends State<PartIIB> {
     );
   }
 
-  Future<void> generateAndDownloadDocx() async {
+  Future<void> _downloadDocx() async {
     setState(() => _generating = true);
     try {
-      final docxRef = FirebaseStorage.instance.ref().child('$_yearRange/II.B/document.docx');
-      final bytes = await docxRef.getData();
-      
-      if (bytes == null) {
+      final fileName = 'document.docx';
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('$_yearRange/II.B/document.docx');
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: docxBytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No DOCX file found. Please save the form first to generate the document.'))
-        );
-        return;
-      }
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: 'Part_II_B_$_yearRange.docx',
-          bytes: bytes,
-          mimeType: MimeType.microsoftWord,
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
         );
       } else {
-        final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/document.docx';
-        final file = File(path);
-        await file.writeAsBytes(bytes);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.')),
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('DOCX downloaded successfully'))
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error downloading DOCX: $e'))
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
     } finally {
       setState(() => _generating = false);
@@ -805,8 +820,8 @@ class _PartIIBState extends State<PartIIB> {
               ),
               IconButton(
                 icon: const Icon(Icons.file_download),
-                onPressed: _generating ? null : generateAndDownloadDocx,
-                tooltip: 'Generate DOCX',
+                onPressed: _generating ? null : _downloadDocx,
+                tooltip: 'Download DOCX',
                 color: const Color(0xff021e84),
               ),
             ],

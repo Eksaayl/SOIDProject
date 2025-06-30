@@ -82,7 +82,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
   bool _loading = true;
   bool _saving = false;
   bool _compiling = false;
-  bool _isFinal = false;
+  bool _isFinalized = false;
 
   late DocumentReference _sectionRef;
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
@@ -184,7 +184,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
       visionCtrl.text = data['visionStatement'] ?? '';
       missionCtrl.text = data['missionStatement'] ?? '';
       setState(() {
-        _isFinal = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
+        _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Load error: $e')));
@@ -277,25 +277,37 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
         'fileUrl': docxUrl,
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'screening': finalize || _isFinal,
+        'screening': finalize || _isFinalized,
         'sectionTitle': 'Part I.A',
+        'isFinalized': finalize ? false : _isFinalized,
       };
-      if (!_isFinal) {
+      if (!finalize) {
         payload['createdAt'] = FieldValue.serverTimestamp();
         payload['createdBy'] = username;
       }
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() {
-        _isFinal = finalize;
+        _isFinalized = finalize;
         _uploadedDocxBytes = null;
         _uploadedDocxName = null;
       });
       if (finalize) {
         await createSubmissionNotification('Part I.A', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part I.A submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part I.A saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-      );
       if (finalize) {
         Navigator.of(context).pop();
       }
@@ -365,7 +377,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
     }
   }
 
-  Future<void> generateAndDownloadDocx() async {
+  Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
       final fileName = 'document.docx';
@@ -594,13 +606,13 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
             else ...[
               IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: _isFinal ? null : () => _save(finalize: false),
+                onPressed: _isFinalized ? null : () => _save(finalize: false),
                 tooltip: 'Save',
                 color: const Color(0xff021e84),
               ),
               IconButton(
                 icon: const Icon(Icons.check),
-                onPressed: _isFinal ? null : () async {
+                onPressed: _isFinalized ? null : () async {
                   final confirmed = await showFinalizeConfirmation(
                     context,
                     'Part I.A - Department/Agency Vision/Mission Statement'
@@ -610,18 +622,18 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
                   }
                 },
                 tooltip: 'Finalize',
-                color: _isFinal ? Colors.grey : const Color(0xff021e84),
+                color: _isFinalized ? Colors.grey : const Color(0xff021e84),
               ),
               IconButton(
                 icon: const Icon(Icons.file_download),
-                onPressed: _compiling ? null : generateAndDownloadDocx,
+                onPressed: _compiling ? null : _downloadDocx,
                 tooltip: 'Download DOCX',
                 color: const Color(0xff021e84),
               ),
             ],
           ],
         ),
-        body: _isFinal
+        body: _isFinalized
             ? Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -753,7 +765,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
                               Row(
                                 children: [
                                   ElevatedButton.icon(
-                                    onPressed: _isFinal ? null : _pickDocxFile,
+                                    onPressed: _isFinalized ? null : _pickDocxFile,
                                     icon: const Icon(Icons.upload_file),
                                     label: const Text('Upload DOCX'),
                                     style: ElevatedButton.styleFrom(
@@ -830,7 +842,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: TextFormField(
         controller: ctrl,
-        enabled: !_isFinal,
+        enabled: !_isFinalized,
         maxLines: multiline ? null : 1,
         decoration: InputDecoration(
           labelText: label,
@@ -863,7 +875,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: TextFormField(
               controller: ctrl,
-              enabled: !_isFinal,
+              enabled: !_isFinalized,
               maxLines: null,
               decoration: InputDecoration(
                 labelText: 'Pillar ${idx + 1}',
@@ -885,7 +897,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
             ),
           );
         }),
-        if (!_isFinal)
+        if (!_isFinalized)
           Center(
             child: ElevatedButton.icon(
               icon: const Icon(Icons.add, color: Colors.white),

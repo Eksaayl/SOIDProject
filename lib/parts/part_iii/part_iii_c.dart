@@ -15,6 +15,22 @@ import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
 
+class LogframeProject {
+  List<Map<String, TextEditingController>> intermediateRows;
+  List<Map<String, TextEditingController>> immediateRows;
+  List<Map<String, TextEditingController>> outputRows;
+  LogframeProject()
+      : intermediateRows = [
+          {'hierarchy': TextEditingController(), 'ovi': TextEditingController(), 'baseline': TextEditingController(), 'targets': TextEditingController(), 'methods': TextEditingController(), 'responsibility': TextEditingController()},
+        ],
+        immediateRows = [
+          {'hierarchy': TextEditingController(), 'ovi': TextEditingController(), 'baseline': TextEditingController(), 'targets': TextEditingController(), 'methods': TextEditingController(), 'responsibility': TextEditingController()},
+        ],
+        outputRows = [
+          {'hierarchy': TextEditingController(), 'ovi': TextEditingController(), 'baseline': TextEditingController(), 'targets': TextEditingController(), 'methods': TextEditingController(), 'responsibility': TextEditingController()},
+        ];
+}
+
 class PartIIIC extends StatefulWidget {
   final String documentId;
   
@@ -40,6 +56,9 @@ class _PartIIICState extends State<PartIIIC> {
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
   final _storage = FirebaseStorage.instance;
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String _userRole = '';
+  List<String> _userSubRoles = [];
+  bool _userHasProjectInAnySection = false;
 
   final List<Map<String, TextEditingController>> _logframeControllers = List.generate(3, (i) => {
     'hierarchy': TextEditingController(),
@@ -56,38 +75,7 @@ class _PartIIICState extends State<PartIIIC> {
     '',
   ];
 
-  final List<Map<String, TextEditingController>> _intermediateRows = [
-    {
-      'hierarchy': TextEditingController(),
-      'ovi': TextEditingController(),
-      'baseline': TextEditingController(),
-      'targets': TextEditingController(),
-      'methods': TextEditingController(),
-      'responsibility': TextEditingController(),
-    }
-  ];
-
-  final List<Map<String, TextEditingController>> _immediateRows = [
-    {
-      'hierarchy': TextEditingController(),
-      'ovi': TextEditingController(),
-      'baseline': TextEditingController(),
-      'targets': TextEditingController(),
-      'methods': TextEditingController(),
-      'responsibility': TextEditingController(),
-    }
-  ];
-
-  final List<Map<String, TextEditingController>> _outputRows = [
-    {
-      'hierarchy': TextEditingController(),
-      'ovi': TextEditingController(),
-      'baseline': TextEditingController(),
-      'targets': TextEditingController(),
-      'methods': TextEditingController(),
-      'responsibility': TextEditingController(),
-    }
-  ];
+  List<LogframeProject> _projects = [LogframeProject()];
 
   @override
   void initState() {
@@ -98,6 +86,7 @@ class _PartIIICState extends State<PartIIIC> {
         .collection('sections')
         .doc('III.C');
     _loadContent();
+    _fetchUserRoleAndCheckBothSections();
     for (int i = 0; i < 3; i++) {
       _logframeControllers[i]['hierarchy']!.text = _defaultHierarchy[i];
     }
@@ -107,113 +96,65 @@ class _PartIIICState extends State<PartIIIC> {
     try {
       final doc = await _sectionRef.get();
       final data = doc.data() as Map<String, dynamic>?;
+      _projects.clear();
+      
       if (data != null) {
         setState(() {
           _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
           _fileName = data['fileName'] as String?;
         });
-        _intermediateRows.clear();
-        if (data['intermediate'] != null) {
-          if (data['intermediate'] is List) {
-            for (final m in data['intermediate']) {
-              _intermediateRows.add({
-                'hierarchy': TextEditingController(text: m['hierarchy']?.toString() ?? ''),
-                'ovi': TextEditingController(text: m['ovi']?.toString() ?? ''),
-                'baseline': TextEditingController(text: m['baseline']?.toString() ?? ''),
-                'targets': TextEditingController(text: m['targets']?.toString() ?? ''),
-                'methods': TextEditingController(text: m['methods']?.toString() ?? ''),
-                'responsibility': TextEditingController(text: m['responsibility']?.toString() ?? ''),
-              });
+        
+        // Load multiple logframes from Firestore
+        if (data['logframes'] is List) {
+          for (final logframe in data['logframes']) {
+            final project = LogframeProject();
+            
+            // Populate intermediateRows
+            if (logframe['intermediate'] is List) {
+              project.intermediateRows = (logframe['intermediate'] as List).map((row) => {
+                'hierarchy': TextEditingController(text: row['hierarchy']?.toString() ?? ''),
+                'ovi': TextEditingController(text: row['ovi']?.toString() ?? ''),
+                'baseline': TextEditingController(text: row['baseline']?.toString() ?? ''),
+                'targets': TextEditingController(text: row['targets']?.toString() ?? ''),
+                'methods': TextEditingController(text: row['methods']?.toString() ?? ''),
+                'responsibility': TextEditingController(text: row['responsibility']?.toString() ?? ''),
+              }).toList();
             }
-          } else if (data['intermediate'] is Map) {
-            final m = data['intermediate'] as Map<String, dynamic>;
-            _intermediateRows.add({
-              'hierarchy': TextEditingController(text: m['hierarchy']?.toString() ?? ''),
-              'ovi': TextEditingController(text: m['ovi']?.toString() ?? ''),
-              'baseline': TextEditingController(text: m['baseline']?.toString() ?? ''),
-              'targets': TextEditingController(text: m['targets']?.toString() ?? ''),
-              'methods': TextEditingController(text: m['methods']?.toString() ?? ''),
-              'responsibility': TextEditingController(text: m['responsibility']?.toString() ?? ''),
-            });
+            
+            // Populate immediateRows
+            if (logframe['immediate'] is List) {
+              project.immediateRows = (logframe['immediate'] as List).map((row) => {
+                'hierarchy': TextEditingController(text: row['hierarchy']?.toString() ?? ''),
+                'ovi': TextEditingController(text: row['ovi']?.toString() ?? ''),
+                'baseline': TextEditingController(text: row['baseline']?.toString() ?? ''),
+                'targets': TextEditingController(text: row['targets']?.toString() ?? ''),
+                'methods': TextEditingController(text: row['methods']?.toString() ?? ''),
+                'responsibility': TextEditingController(text: row['responsibility']?.toString() ?? ''),
+              }).toList();
+            }
+            
+            // Populate outputRows
+            if (logframe['outputs'] is List) {
+              project.outputRows = (logframe['outputs'] as List).map((row) => {
+                'hierarchy': TextEditingController(text: row['hierarchy']?.toString() ?? ''),
+                'ovi': TextEditingController(text: row['ovi']?.toString() ?? ''),
+                'baseline': TextEditingController(text: row['baseline']?.toString() ?? ''),
+                'targets': TextEditingController(text: row['targets']?.toString() ?? ''),
+                'methods': TextEditingController(text: row['methods']?.toString() ?? ''),
+                'responsibility': TextEditingController(text: row['responsibility']?.toString() ?? ''),
+              }).toList();
+            }
+            
+            _projects.add(project);
           }
         }
-        if (_intermediateRows.isEmpty) {
-          _intermediateRows.add({
-            'hierarchy': TextEditingController(),
-            'ovi': TextEditingController(),
-            'baseline': TextEditingController(),
-            'targets': TextEditingController(),
-            'methods': TextEditingController(),
-            'responsibility': TextEditingController(),
-          });
+        
+        // If no logframes found, add a blank one
+        if (_projects.isEmpty) {
+          _projects.add(LogframeProject());
         }
-        _immediateRows.clear();
-        if (data['immediate'] != null) {
-          if (data['immediate'] is List) {
-            for (final m in data['immediate']) {
-              _immediateRows.add({
-                'hierarchy': TextEditingController(text: m['hierarchy']?.toString() ?? ''),
-                'ovi': TextEditingController(text: m['ovi']?.toString() ?? ''),
-                'baseline': TextEditingController(text: m['baseline']?.toString() ?? ''),
-                'targets': TextEditingController(text: m['targets']?.toString() ?? ''),
-                'methods': TextEditingController(text: m['methods']?.toString() ?? ''),
-                'responsibility': TextEditingController(text: m['responsibility']?.toString() ?? ''),
-              });
-            }
-          } else if (data['immediate'] is Map) {
-            final m = data['immediate'] as Map<String, dynamic>;
-            _immediateRows.add({
-              'hierarchy': TextEditingController(text: m['hierarchy']?.toString() ?? ''),
-              'ovi': TextEditingController(text: m['ovi']?.toString() ?? ''),
-              'baseline': TextEditingController(text: m['baseline']?.toString() ?? ''),
-              'targets': TextEditingController(text: m['targets']?.toString() ?? ''),
-              'methods': TextEditingController(text: m['methods']?.toString() ?? ''),
-              'responsibility': TextEditingController(text: m['responsibility']?.toString() ?? ''),
-            });
-          }
-        }
-        if (_immediateRows.isEmpty) _immediateRows.add({
-          'hierarchy': TextEditingController(),
-          'ovi': TextEditingController(),
-          'baseline': TextEditingController(),
-          'targets': TextEditingController(),
-          'methods': TextEditingController(),
-          'responsibility': TextEditingController(),
-        });
-
-        _outputRows.clear();
-        if (data['outputs'] != null) {
-          if (data['outputs'] is List) {
-            for (final m in data['outputs']) {
-              _outputRows.add({
-                'hierarchy': TextEditingController(text: m['hierarchy']?.toString() ?? ''),
-                'ovi': TextEditingController(text: m['ovi']?.toString() ?? ''),
-                'baseline': TextEditingController(text: m['baseline']?.toString() ?? ''),
-                'targets': TextEditingController(text: m['targets']?.toString() ?? ''),
-                'methods': TextEditingController(text: m['methods']?.toString() ?? ''),
-                'responsibility': TextEditingController(text: m['responsibility']?.toString() ?? ''),
-              });
-            }
-          } else if (data['outputs'] is Map) {
-            final m = data['outputs'] as Map<String, dynamic>;
-            _outputRows.add({
-              'hierarchy': TextEditingController(text: m['hierarchy']?.toString() ?? ''),
-              'ovi': TextEditingController(text: m['ovi']?.toString() ?? ''),
-              'baseline': TextEditingController(text: m['baseline']?.toString() ?? ''),
-              'targets': TextEditingController(text: m['targets']?.toString() ?? ''),
-              'methods': TextEditingController(text: m['methods']?.toString() ?? ''),
-              'responsibility': TextEditingController(text: m['responsibility']?.toString() ?? ''),
-            });
-          }
-        }
-        if (_outputRows.isEmpty) _outputRows.add({
-          'hierarchy': TextEditingController(),
-          'ovi': TextEditingController(),
-          'baseline': TextEditingController(),
-          'targets': TextEditingController(),
-          'methods': TextEditingController(),
-          'responsibility': TextEditingController(),
-        });
+        
+        // Load DOCX if it exists
         try {
           final docxRef = _storage.ref().child('${_yearRange}/III.C/document.docx');
           final docxBytes = await docxRef.getData();
@@ -225,6 +166,9 @@ class _PartIIICState extends State<PartIIIC> {
         } catch (e) {
           print('Error loading DOCX: $e');
         }
+      } else {
+        // No data exists, add a blank project
+        _projects.add(LogframeProject());
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -235,42 +179,107 @@ class _PartIIICState extends State<PartIIIC> {
     }
   }
 
+  Future<void> _fetchUserRoleAndCheckBothSections() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      setState(() {
+        _userRole = userDoc.data()?['role'] ?? '';
+        _userSubRoles = List<String>.from(userDoc.data()?['sub_roles'] ?? []);
+      });
+      await _checkUserHasProjectInAnySection();
+    }
+  }
+
+  Future<void> _checkUserHasProjectInAnySection() async {
+    final firestore = FirebaseFirestore.instance;
+    final iiiA = await firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('III.A').get();
+    final iiiB = await firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('III.B').get();
+    bool found = false;
+    for (final doc in [iiiA, iiiB]) {
+      if (doc.exists && doc.data() != null) {
+        final projects = doc.data()!['projects'] as List<dynamic>? ?? [];
+        for (final proj in projects) {
+          final savedSubRoles = List<String>.from(proj['sub_roles'] ?? []);
+          if (savedSubRoles.isNotEmpty && _userSubRoles.any((userSubRole) => savedSubRoles.contains(userSubRole))) {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (found) break;
+    }
+    setState(() {
+      _userHasProjectInAnySection = found;
+    });
+  }
+
+  // Check if user can edit the logframe
+  bool _canEditLogframe() {
+    if (_userRole == 'admin') return true;
+    if (_userSubRoles.isEmpty) return true;
+    
+    // Users can edit Part III.C if they have projects in either III.A or III.B
+    return _userHasProjectInAnySection;
+  }
+
   Map<String, dynamic> _collectLogframeData() {
+    // Convert all projects to plain maps for saving
+    final logframes = _projects.map((project) => {
+      'intermediate': project.intermediateRows.map((c) => {
+        'hierarchy': c['hierarchy']!.text,
+        'ovi': c['ovi']!.text,
+        'baseline': c['baseline']!.text,
+        'targets': c['targets']!.text,
+        'methods': c['methods']!.text,
+        'responsibility': c['responsibility']!.text,
+      }).toList(),
+      'immediate': project.immediateRows.map((c) => {
+        'hierarchy': c['hierarchy']!.text,
+        'ovi': c['ovi']!.text,
+        'baseline': c['baseline']!.text,
+        'targets': c['targets']!.text,
+        'methods': c['methods']!.text,
+        'responsibility': c['responsibility']!.text,
+      }).toList(),
+      'outputs': project.outputRows.map((c) => {
+        'hierarchy': c['hierarchy']!.text,
+        'ovi': c['ovi']!.text,
+        'baseline': c['baseline']!.text,
+        'targets': c['targets']!.text,
+        'methods': c['methods']!.text,
+        'responsibility': c['responsibility']!.text,
+      }).toList(),
+    }).toList();
+    
     return {
-      'intermediate': _intermediateRows.map((c) => {
-        'hierarchy': c['hierarchy']!.text,
-        'ovi': c['ovi']!.text,
-        'baseline': c['baseline']!.text,
-        'targets': c['targets']!.text,
-        'methods': c['methods']!.text,
-        'responsibility': c['responsibility']!.text,
-      }).toList(),
-      'immediate': _immediateRows.map((c) => {
-        'hierarchy': c['hierarchy']!.text,
-        'ovi': c['ovi']!.text,
-        'baseline': c['baseline']!.text,
-        'targets': c['targets']!.text,
-        'methods': c['methods']!.text,
-        'responsibility': c['responsibility']!.text,
-      }).toList(),
-      'outputs': _outputRows.map((c) => {
-        'hierarchy': c['hierarchy']!.text,
-        'ovi': c['ovi']!.text,
-        'baseline': c['baseline']!.text,
-        'targets': c['targets']!.text,
-        'methods': c['methods']!.text,
-        'responsibility': c['responsibility']!.text,
-      }).toList(),
+      'logframes': logframes,
     };
   }
 
   Future<void> _generateAndUploadDocx(Map<String, dynamic> logframeData) async {
+    final formattedYearRange = formatYearRange(_yearRange);
     final url = Uri.parse('http://localhost:8000/generate-iiic-docx/');
+    
+    // Debug: Log the data being sent
+    print('Part III.C - Sending data to backend:');
+    print('Year range: $formattedYearRange');
+    print('Data: ${jsonEncode(logframeData)}');
+    
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'yearrange': formattedYearRange,
+      },
       body: jsonEncode(logframeData),
     );
+    
+    print('Part III.C - Response status: ${response.statusCode}');
+    if (response.statusCode != 200) {
+      print('Part III.C - Response body: ${response.body}');
+    }
+    
     if (response.statusCode == 200) {
       final bytes = response.bodyBytes;
       final fileName = 'document.docx';
@@ -312,7 +321,7 @@ class _PartIIICState extends State<PartIIIC> {
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part III.C',
-        'isFinalized': _isFinalized,
+        'isFinalized': finalize ? false : _isFinalized,
       };
       if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
@@ -323,10 +332,22 @@ class _PartIIICState extends State<PartIIIC> {
       setState(() => _isFinalized = finalize);
       if (finalize) {
         await createSubmissionNotification('Part III.C', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part III.C submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part III.C saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFinalized ? 'Finalized' : 'Saved (not finalized)'))
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Save error: $e'))
@@ -336,435 +357,37 @@ class _PartIIICState extends State<PartIIIC> {
     }
   }
 
-  Widget _buildLogframeForm() {
-    final fields = [
-      {
-        'key': 'ovi',
-        'label': 'Objectively verifiable indicators',
-        'tooltip': 'Indicators that can be measured to verify achievement of the result.'
-      },
-      {
-        'key': 'baseline',
-        'label': 'Baseline data',
-        'tooltip': 'The starting value or situation before the intervention.'
-      },
-      {
-        'key': 'targets',
-        'label': 'Targets',
-        'tooltip': 'The intended value or situation to be achieved.'
-      },
-      {
-        'key': 'methods',
-        'label': 'Data collection methods',
-        'tooltip': 'How the data will be collected (e.g., survey, report, observation).'
-      },
-      {
-        'key': 'responsibility',
-        'label': 'Responsibility to collect data',
-        'tooltip': 'Who is responsible for collecting the data.'
-      },
-    ];
-    final cardTitles = [
-      'Intermediate Outcome',
-      'Immediate Outcome',
-      'Outputs',
-    ];
-    return Container(
-      margin: const EdgeInsets.only(bottom: 32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.10),
-            spreadRadius: 2,
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Table(
-        border: TableBorder.all(color: Colors.grey.shade300, width: 1),
-        defaultVerticalAlignment: TableCellVerticalAlignment.top,
-        children: [
-          TableRow(
-            decoration: BoxDecoration(
-              color: Color(0xfff5f7fa),
+  Widget _buildLogframeForm(bool isSmallScreen) {
+    return Column(
+      children: [
+        for (int i = 0; i < _projects.length; i++)
+          _buildLogframeFormForProject(_projects[i], i),
+        const SizedBox(height: 24),
+        Center(
+          child: ElevatedButton.icon(
+            onPressed: () {
+              setState(() {
+                _projects.add(LogframeProject());
+              });
+            },
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              'Add Project',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-            children: [
-              Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Text(
-                      'Hierarchy of targeted results',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xff021e84)),
-                    ),
-                    SizedBox(width: 4),
-                    Tooltip(
-                      message: 'Describe the result level (e.g., Intermediate Outcome, Immediate Outcome, Outputs).',
-                      child: Icon(Icons.info_outline, color: Color(0xff021e84), size: 18),
-                    ),
-                  ],
-                ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xff021e84),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
               ),
-              ...fields.map((field) => Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Text(
-                      field['label'] ?? '',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xff021e84)),
-                    ),
-                    SizedBox(width: 4),
-                    Tooltip(
-                      message: field['tooltip'] ?? '',
-                      child: Icon(Icons.info_outline, color: Color(0xff021e84), size: 18),
-                    ),
-                  ],
-                ),
-              )),
-            ],
+              elevation: 2,
+            ),
           ),
-          // Intermediate Outcome rows
-          ...List.generate(_intermediateRows.length, (rowIdx) {
-            final controllers = _intermediateRows[rowIdx];
-            return TableRow(
-              decoration: BoxDecoration(
-                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
-              ),
-              children: [
-                Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        rowIdx == 0 ? 'Intermediate Outcome' : '',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Color(0xff021e84),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        controller: controllers['hierarchy'],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                          hintText: '',
-                        ),
-                      ),
-                      if (rowIdx > 0)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            tooltip: 'Remove row',
-                            onPressed: () {
-                              setState(() {
-                                _intermediateRows.removeAt(rowIdx);
-                              });
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                ...fields.map((field) => Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 23),
-                      TextFormField(
-                        controller: controllers[field['key'] ?? ''],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
-              ],
-            );
-          }),
-          TableRow(
-            children: [
-              Padding(
-                padding: EdgeInsets.all(14),
-                child: Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _intermediateRows.add({
-                          'hierarchy': TextEditingController(),
-                          'ovi': TextEditingController(),
-                          'baseline': TextEditingController(),
-                          'targets': TextEditingController(),
-                          'methods': TextEditingController(),
-                          'responsibility': TextEditingController(),
-                        });
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xff021e84),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                      elevation: 0,
-                      textStyle: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    child: Text('Add Intermediate Outcome Row'),
-                  ),
-                ),
-              ),
-              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
-            ],
-          ),
-          // Immediate Outcome rows
-          ...List.generate(_immediateRows.length, (rowIdx) {
-            final controllers = _immediateRows[rowIdx];
-            return TableRow(
-              decoration: BoxDecoration(
-                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
-              ),
-              children: [
-                Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        rowIdx == 0 ? 'Immediate Outcome' : '',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Color(0xff021e84),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        controller: controllers['hierarchy'],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                          hintText: '',
-                        ),
-                      ),
-                      if (rowIdx > 0)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            tooltip: 'Remove row',
-                            onPressed: () {
-                              setState(() {
-                                _immediateRows.removeAt(rowIdx);
-                              });
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                ...fields.map((field) => Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 23),
-                      TextFormField(
-                        controller: controllers[field['key'] ?? ''],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
-              ],
-            );
-          }),
-          TableRow(
-            children: [
-              Padding(
-                padding: EdgeInsets.all(14),
-                child: Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _immediateRows.add({
-                          'hierarchy': TextEditingController(),
-                          'ovi': TextEditingController(),
-                          'baseline': TextEditingController(),
-                          'targets': TextEditingController(),
-                          'methods': TextEditingController(),
-                          'responsibility': TextEditingController(),
-                        });
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xff021e84),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                      elevation: 0,
-                      textStyle: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    child: Text('Add Immediate Outcome Row'),
-                  ),
-                ),
-              ),
-              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
-            ],
-          ),
-          // Outputs rows
-          ...List.generate(_outputRows.length, (rowIdx) {
-            final controllers = _outputRows[rowIdx];
-            return TableRow(
-              decoration: BoxDecoration(
-                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
-              ),
-              children: [
-                Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        rowIdx == 0 ? 'Outputs' : '',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Color(0xff021e84),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        controller: controllers['hierarchy'],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                          hintText: '',
-                        ),
-                      ),
-                      if (rowIdx > 0)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            tooltip: 'Remove row',
-                            onPressed: () {
-                              setState(() {
-                                _outputRows.removeAt(rowIdx);
-                              });
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                ...fields.map((field) => Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 23),
-                      TextFormField(
-                        controller: controllers[field['key'] ?? ''],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
-              ],
-            );
-          }),
-          TableRow(
-            children: [
-              Padding(
-                padding: EdgeInsets.all(14),
-                child: Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _outputRows.add({
-                          'hierarchy': TextEditingController(),
-                          'ovi': TextEditingController(),
-                          'baseline': TextEditingController(),
-                          'targets': TextEditingController(),
-                          'methods': TextEditingController(),
-                          'responsibility': TextEditingController(),
-                        });
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xff021e84),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                      elevation: 0,
-                      textStyle: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    child: Text('Add Output Row'),
-                  ),
-                ),
-              ),
-              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
-            ],
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+      ],
     );
   }
 
@@ -801,6 +424,9 @@ class _PartIIICState extends State<PartIIIC> {
         ),
       );
     }
+    
+    final isSmallScreen = MediaQuery.of(context).size.width < 1750;
+    
     return WillPopScope(
       onWillPop: () async {
         final shouldPop = await showDialog<bool>(
@@ -945,11 +571,11 @@ class _PartIIICState extends State<PartIIIC> {
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),
         appBar: AppBar(
-          title: const Text(
-            'Part III.C - Performance Measurement Framework',
+          title: Text(
+            isSmallScreen ? 'Part III.C' : 'Part III.C - Performance Measurement Framework',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 20,
+              fontSize: isSmallScreen ? 16 : 20,
             ),
           ),
           elevation: 0,
@@ -1017,8 +643,11 @@ class _PartIIICState extends State<PartIIIC> {
                     Icon(Icons.lock, size: 48, color: Colors.grey),
                     SizedBox(height: 12),
                     Text(
-                      'Part III.C - Performance Measurement Framework has been finalized.',
+                      isSmallScreen 
+                        ? 'Part III.C has been finalized.'
+                        : 'Part III.C - Performance Measurement Framework has been finalized.',
                       style: TextStyle(fontSize: 16, color: Colors.grey),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
@@ -1027,12 +656,12 @@ class _PartIIICState extends State<PartIIIC> {
                 child: Form(
                   key: _formKey,
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(20),
+                          padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(15),
@@ -1062,36 +691,469 @@ class _PartIIICState extends State<PartIIIC> {
                                     ),
                                   ),
                                   const SizedBox(width: 12),
-                                  const Text(
-                                    'Instructions',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF2D3748),
+                                  Expanded(
+                                    child: Text(
+                                      isSmallScreen ? 'Instructions' : 'Instructions',
+                                      style: TextStyle(
+                                        fontSize: isSmallScreen ? 16 : 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFF2D3748),
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 16),
-                              const Text(
-                                'Please fill in the logframe table below for Part III.C. When you save, a DOCX will be generated and available for download.',
+                              Text(
+                                isSmallScreen 
+                                  ? 'Fill in the logframe table below. Save to generate DOCX for download.'
+                                  : 'Please fill in the logframe table below for Part III.C. When you save, a DOCX will be generated and available for download.',
                                 style: TextStyle(
-                                  fontSize: 16,
-                                  color: Color(0xFF4A5568),
+                                  fontSize: isSmallScreen ? 14 : 16,
+                                  color: const Color(0xFF4A5568),
                                   height: 1.5,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        _buildLogframeForm(),
-                        const SizedBox(height: 32),
+                        SizedBox(height: isSmallScreen ? 16 : 24),
+                        _buildLogframeForm(isSmallScreen),
                       ],
                     ),
                   ),
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildLogframeFormForProject(LogframeProject project, int index) {
+    final fields = [
+      {
+        'key': 'ovi',
+        'label': 'Objectively verifiable indicators',
+        'tooltip': 'Indicators that can be measured to verify achievement of the result.'
+      },
+      {
+        'key': 'baseline',
+        'label': 'Baseline data',
+        'tooltip': 'The starting value or situation before the intervention.'
+      },
+      {
+        'key': 'targets',
+        'label': 'Targets',
+        'tooltip': 'The intended value or situation to be achieved.'
+      },
+      {
+        'key': 'methods',
+        'label': 'Data collection methods',
+        'tooltip': 'How the data will be collected (e.g., survey, report, observation).'
+      },
+      {
+        'key': 'responsibility',
+        'label': 'Responsibility to collect data',
+        'tooltip': 'Who is responsible for collecting the data.'
+      },
+    ];
+    final cardTitles = [
+      'Intermediate Outcome',
+      'Immediate Outcome',
+      'Outputs',
+    ];
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.10),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Table(
+        border: TableBorder.all(color: Colors.grey.shade300, width: 1),
+        defaultVerticalAlignment: TableCellVerticalAlignment.top,
+        children: [
+          TableRow(
+            decoration: BoxDecoration(
+              color: Color(0xfff5f7fa),
+            ),
+            children: [
+              Padding(
+                padding: EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Text(
+                      'Hierarchy of targeted results',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xff021e84)),
+                    ),
+                    SizedBox(width: 4),
+                    Tooltip(
+                      message: 'Describe the result level (e.g., Intermediate Outcome, Immediate Outcome, Outputs).',
+                      child: Icon(Icons.info_outline, color: Color(0xff021e84), size: 18),
+                    ),
+                  ],
+                ),
+              ),
+              ...fields.map((field) => Padding(
+                padding: EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Text(
+                      field['label'] ?? '',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xff021e84)),
+                    ),
+                    SizedBox(width: 4),
+                    Tooltip(
+                      message: field['tooltip'] ?? '',
+                      child: Icon(Icons.info_outline, color: Color(0xff021e84), size: 18),
+                    ),
+                  ],
+                ),
+              )),
+            ],
+          ),
+          ...List.generate(project.intermediateRows.length, (rowIdx) {
+            final controllers = project.intermediateRows[rowIdx];
+            return TableRow(
+              decoration: BoxDecoration(
+                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
+              ),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rowIdx == 0 ? 'Intermediate Outcome' : '',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Color(0xff021e84),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      TextFormField(
+                        controller: controllers['hierarchy'],
+                        enabled: !_isFinalized,
+                        minLines: 1,
+                        maxLines: null,
+                        decoration: const InputDecoration(
+                          border: UnderlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          hintText: '',
+                        ),
+                      ),
+                      if (rowIdx > 0)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            icon: Icon(Icons.delete, color: Colors.red),
+                            tooltip: 'Remove row',
+                            onPressed: () {
+                              setState(() {
+                                project.intermediateRows.removeAt(rowIdx);
+                              });
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                ...fields.map((field) => Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 23),
+                      TextFormField(
+                        controller: controllers[field['key'] ?? ''],
+                        enabled: !_isFinalized,
+                        minLines: 1,
+                        maxLines: null,
+                        decoration: InputDecoration(
+                          border: UnderlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+            );
+          }),
+          TableRow(
+            children: [
+              Padding(
+                padding: EdgeInsets.all(14),
+                child: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        project.intermediateRows.add({
+                          'hierarchy': TextEditingController(),
+                          'ovi': TextEditingController(),
+                          'baseline': TextEditingController(),
+                          'targets': TextEditingController(),
+                          'methods': TextEditingController(),
+                          'responsibility': TextEditingController(),
+                        });
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xff021e84),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                      elevation: 0,
+                      textStyle: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    child: Text('Add Intermediate Outcome Row'),
+                  ),
+                ),
+              ),
+              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
+            ],
+          ),
+          ...List.generate(project.immediateRows.length, (rowIdx) {
+            final controllers = project.immediateRows[rowIdx];
+            return TableRow(
+              decoration: BoxDecoration(
+                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
+              ),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rowIdx == 0 ? 'Immediate Outcome' : '',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Color(0xff021e84),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      TextFormField(
+                        controller: controllers['hierarchy'],
+                        enabled: !_isFinalized,
+                        minLines: 1,
+                        maxLines: null,
+                        decoration: const InputDecoration(
+                          border: UnderlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          hintText: '',
+                        ),
+                      ),
+                      if (rowIdx > 0)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            icon: Icon(Icons.delete, color: Colors.red),
+                            tooltip: 'Remove row',
+                            onPressed: () {
+                              setState(() {
+                                project.immediateRows.removeAt(rowIdx);
+                              });
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                ...fields.map((field) => Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 23),
+                      TextFormField(
+                        controller: controllers[field['key'] ?? ''],
+                        enabled: !_isFinalized,
+                        minLines: 1,
+                        maxLines: null,
+                        decoration: InputDecoration(
+                          border: UnderlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+            );
+          }),
+          TableRow(
+            children: [
+              Padding(
+                padding: EdgeInsets.all(14),
+                child: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        project.immediateRows.add({
+                          'hierarchy': TextEditingController(),
+                          'ovi': TextEditingController(),
+                          'baseline': TextEditingController(),
+                          'targets': TextEditingController(),
+                          'methods': TextEditingController(),
+                          'responsibility': TextEditingController(),
+                        });
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xff021e84),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                      elevation: 0,
+                      textStyle: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    child: Text('Add Immediate Outcome Row'),
+                  ),
+                ),
+              ),
+              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
+            ],
+          ),
+          ...List.generate(project.outputRows.length, (rowIdx) {
+            final controllers = project.outputRows[rowIdx];
+            return TableRow(
+              decoration: BoxDecoration(
+                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
+              ),
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rowIdx == 0 ? 'Outputs' : '',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Color(0xff021e84),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      TextFormField(
+                        controller: controllers['hierarchy'],
+                        enabled: !_isFinalized,
+                        minLines: 1,
+                        maxLines: null,
+                        decoration: const InputDecoration(
+                          border: UnderlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          hintText: '',
+                        ),
+                      ),
+                      if (rowIdx > 0)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            icon: Icon(Icons.delete, color: Colors.red),
+                            tooltip: 'Remove row',
+                            onPressed: () {
+                              setState(() {
+                                project.outputRows.removeAt(rowIdx);
+                              });
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                ...fields.map((field) => Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 23),
+                      TextFormField(
+                        controller: controllers[field['key'] ?? ''],
+                        enabled: !_isFinalized,
+                        minLines: 1,
+                        maxLines: null,
+                        decoration: InputDecoration(
+                          border: UnderlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+            );
+          }),
+          TableRow(
+            children: [
+              Padding(
+                padding: EdgeInsets.all(14),
+                child: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        project.outputRows.add({
+                          'hierarchy': TextEditingController(),
+                          'ovi': TextEditingController(),
+                          'baseline': TextEditingController(),
+                          'targets': TextEditingController(),
+                          'methods': TextEditingController(),
+                          'responsibility': TextEditingController(),
+                        });
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xff021e84),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                      elevation: 0,
+                      textStyle: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    child: Text('Add Output Row'),
+                  ),
+                ),
+              ),
+              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
+            ],
+          ),
+        ],
       ),
     );
   }

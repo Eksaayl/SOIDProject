@@ -1,8 +1,10 @@
 from docx import Document
 from docx.shared import Pt, Inches
 
-def create_iib_docx(systems, output_path):
-    doc = Document(r'C:/Users/User/Documents/SOIDProject/assets/II_b.docx')
+def create_iib_docx(systems, output_path, template_path=None):
+    if template_path is None:
+        template_path = r'C:/Users/User/Documents/SOIDProject/assets/II_b.docx'
+    doc = Document(template_path)
     for sys in systems:
         table = doc.add_table(rows=8, cols=3)
         table.style = 'Table Grid'
@@ -83,8 +85,10 @@ def create_iib_docx(systems, output_path):
         doc.add_paragraph()
     doc.save(output_path)
 
-def create_iic_docx(databases, output_path):
-    doc = Document(r'C:/Users/User/Documents/SOIDProject/assets/II_c.docx')
+def create_iic_docx(databases, output_path, template_path=None):
+    if template_path is None:
+        template_path = r'C:/Users/User/Documents/SOIDProject/assets/II_c.docx'
+    doc = Document(template_path)
     for db in databases:
         table = doc.add_table(rows=8, cols=3)
         table.style = 'Table Grid'
@@ -164,9 +168,17 @@ def create_iic_docx(databases, output_path):
         doc.add_paragraph()
     doc.save(output_path)
 
-def create_iii_a_docx(projects, output_path):
-    doc = Document(r'C:/Users/User/Documents/SOIDProject/assets/III_a.docx')
-    for project in projects:
+def create_iii_a_docx(projects, output_path, template_path=None):
+    if template_path is None:
+        template_path = r'C:/Users/User/Documents/SOIDProject/assets/III_a.docx'
+    doc = Document(template_path)
+    for idx, project in enumerate(projects):
+        rank_para = doc.add_paragraph()
+        rank_run = rank_para.add_run(f'RANK {idx + 1}')
+        rank_run.bold = True
+        rank_run.font.name = 'Palatino Linotype'
+        rank_run.font.size = Pt(12)
+        rank_para.paragraph_format.space_after = Pt(0)
         table = doc.add_table(rows=4, cols=2)
         table.style = 'Table Grid'
         table.autofit = False
@@ -214,8 +226,10 @@ def create_iii_a_docx(projects, output_path):
         doc.add_paragraph()
     doc.save(output_path)
 
-def create_iii_b_docx(projects, output_path):
-    doc = Document(r'C:/Users/User/Documents/SOIDProject/assets/III_b.docx')
+def create_iii_b_docx(projects, output_path, template_path=None):
+    if template_path is None:
+        template_path = r'C:/Users/User/Documents/SOIDProject/assets/III_b.docx'
+    doc = Document(template_path)
     for project in projects:
         table = doc.add_table(rows=6, cols=2)
         table.style = 'Table Grid'
@@ -271,78 +285,88 @@ def create_iiic_logframe_table(data, output_path, doc=None):
     data: dict with keys 'intermediate' (list of dicts), 'immediate', 'outputs'
     doc: optional, an existing Document object to add the table to
     """
-    if doc is None:
-        doc = Document()
-    intermediate_rows = data.get("intermediate", [])
-    immediate_rows = data.get("immediate", [])
-    outputs_rows = data.get("outputs", [])
+    try:
+        if doc is None:
+            doc = Document()
+        
+        # Handle the data structure - data should be a single logframe
+        intermediate_rows = data.get("intermediate", [])
+        immediate_rows = data.get("immediate", [])
+        outputs_rows = data.get("outputs", [])
 
-    if not isinstance(intermediate_rows, list):
-        intermediate_rows = [intermediate_rows]
-    if not isinstance(immediate_rows, list):
-        immediate_rows = [immediate_rows]
-    if not isinstance(outputs_rows, list):
-        outputs_rows = [outputs_rows]
+        if not isinstance(intermediate_rows, list):
+            intermediate_rows = [intermediate_rows] if intermediate_rows else []
+        if not isinstance(immediate_rows, list):
+            immediate_rows = [immediate_rows] if immediate_rows else []
+        if not isinstance(outputs_rows, list):
+            outputs_rows = [outputs_rows] if outputs_rows else []
 
-    total_rows = 1 + len(intermediate_rows) + len(immediate_rows) + len(outputs_rows)
-    table = doc.add_table(rows=total_rows, cols=6)
-    table.style = 'Table Grid'
-    table.autofit = False
-    table.allow_autofit = False
+        total_rows = 1 + len(intermediate_rows) + len(immediate_rows) + len(outputs_rows)
+        table = doc.add_table(rows=total_rows, cols=6)
+        table.style = 'Table Grid'
+        table.autofit = False
+        table.allow_autofit = False
 
-    col_widths = [2.11, 1.97, 0.98, 1.28, 1.05, 1.55]
-    for col_idx, width in enumerate(col_widths):
-        for row in table.rows:
-            row.cells[col_idx].width = Inches(width)
+        col_widths = [2.11, 1.97, 0.98, 1.28, 1.05, 1.55]
+        for col_idx, width in enumerate(col_widths):
+            for row in table.rows:
+                row.cells[col_idx].width = Inches(width)
 
-    # Header row
-    headers = [
-        "Hierarchy of targeted results",
-        "Objectively verifiable indicators (OVI)",
-        "Baseline data",
-        "Targets",
-        "Data collection methods",
-        "Responsibility to collect data"
-    ]
-    for i, header in enumerate(headers):
-        cell = table.cell(0, i)
-        cell.text = header
-        for paragraph in cell.paragraphs:
-            for run in paragraph.runs:
-                run.bold = True
-                run.font.size = Pt(11)
+        headers = [
+            "Hierarchy of targeted results",
+            "Objectively verifiable indicators (OVI)",
+            "Baseline data",
+            "Targets",
+            "Data collection methods",
+            "Responsibility to collect data"
+        ]
+        for i, header in enumerate(headers):
+            cell = table.cell(0, i)
+            cell.text = header
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.size = Pt(11)
 
-    sections = [
-        ('Intermediate Outcome:', intermediate_rows),
-        ('Immediate Outcome:', immediate_rows),
-        ('Outputs:', outputs_rows),
-    ]
-    row_idx = 1
-    for label, rows in sections:
-        for idx, row_data in enumerate(rows):
-            cell = table.cell(row_idx, 0)
-            if idx == 0:
-                cell.text = label
-                cell.add_paragraph("")
-            else:
-                cell.text = ""
-            user_value = row_data.get("hierarchy", "")
-            if user_value:
-                for line in user_value.splitlines():
-                    if line.strip():
-                        cell.add_paragraph(line.strip())
-            for col, col_key in enumerate(["ovi", "baseline", "targets", "methods", "responsibility"], start=1):
-                value = row_data.get(col_key, "")
-                cell = table.cell(row_idx, col)
-                cell.text = ""
+        sections = [
+            ('Intermediate Outcome:', intermediate_rows),
+            ('Immediate Outcome:', immediate_rows),
+            ('Outputs:', outputs_rows),
+        ]
+        row_idx = 1
+        for label, rows in sections:
+            for idx, row_data in enumerate(rows):
+                cell = table.cell(row_idx, 0)
                 if idx == 0:
+                    cell.text = label
                     cell.add_paragraph("")
-                if value:
-                    for line in value.splitlines():
+                else:
+                    cell.text = ""
+                user_value = row_data.get("hierarchy", "")
+                if user_value:
+                    for line in user_value.splitlines():
                         if line.strip():
                             cell.add_paragraph(line.strip())
-            row_idx += 1
+                for col, col_key in enumerate(["ovi", "baseline", "targets", "methods", "responsibility"], start=1):
+                    value = row_data.get(col_key, "")
+                    cell = table.cell(row_idx, col)
+                    cell.text = ""
+                    if idx == 0:
+                        cell.add_paragraph("")
+                    if value:
+                        for line in value.splitlines():
+                            if line.strip():
+                                cell.add_paragraph(line.strip())
+                row_idx += 1
 
-    doc.save(output_path)
+        # Only save if no existing document was passed
+        if doc is None and output_path:
+            doc.save(output_path)
+    
+    except Exception as e:
+        print(f"Error in create_iiic_logframe_table: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
 
     

@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from docx import Document
 from docxcompose.composer import Composer
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Pt, RGBColor
 import uvicorn
 import uuid
 from server.tables import create_iii_b_docx, create_iii_a_docx, create_iiic_logframe_table
@@ -240,11 +240,16 @@ async def generate_docx_IV_b(template_file, images):
 async def generate_docx(
     template: UploadFile = File(...),
     images: List[UploadFile] = File(...),
+    request: Request = None,
 ):
     template_file = None
     try:
         if not template.filename:
             raise HTTPException(status_code=400, detail="Template filename is required")
+        
+        # Get yearRange from headers
+        year_range = request.headers.get('yearrange', '') if request else ''
+        logger.debug(f"[GENERATE DOCX] Received yearRange: '{year_range}'")
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         template_file = f"temp_template_{timestamp}.docx"
@@ -270,6 +275,13 @@ async def generate_docx(
             elif "IV_b.docx" in template.filename:
                 if len(images) != 3:
                     raise HTTPException(status_code=400, detail="Part IV.B requires exactly 3 images")
+                # Apply yearRange replacements for IV.B if provided
+                if year_range:
+                    temp_template_with_year = f"temp_iv_b_with_year_{timestamp}.docx"
+                    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'IV_b.docx')
+                    replacements = {"${yearRange}": year_range}
+                    fill_placeholders_and_bullets(template_path, temp_template_with_year, replacements)
+                    template_file = temp_template_with_year
                 docx_bytes = await generate_docx_IV_b(template_file, images)
             else:
                 raise HTTPException(status_code=400, detail=f"Invalid template file: {template.filename}")
@@ -579,45 +591,124 @@ async def generate_ia_docx_endpoint(request: Request):
     
 @app.post("/generate-iib-docx/")
 async def generate_iib_docx_endpoint(request: Request):
-    systems = await request.json()
+    data = await request.json()
+    systems = data.get('systems', [])  
+    year_range = data.get('yearRange', '')  
+    logger.debug(f"[IIB DOCX] Received yearRange: '{year_range}'")
+    
     import tempfile, uuid, os
     temp_dir = tempfile.gettempdir()
     filename = f"iib_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
+    
+    template_path = 'assets/II_b.docx'
+    if year_range:
+        temp_template_path = os.path.join(temp_dir, f"temp_iib_template_{uuid.uuid4().hex}.docx")
+        replacements = {"${yearRange}": year_range}
+        fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
+        template_path = temp_template_path
+    
     from server.tables import create_iib_docx
-    create_iib_docx(systems, output_path)
+    create_iib_docx(systems, output_path, template_path)
+    
+    if year_range and os.path.exists(temp_template_path):
+        try:
+            os.remove(temp_template_path)
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary template file: {e}")
+    
     from fastapi.responses import FileResponse
-    return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")    
+    return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     
 @app.post("/generate-iic-docx/")
 async def generate_iic_docx_endpoint(request: Request):
-    databases = await request.json()
+    data = await request.json()
+    databases = data.get('databases', data)  
+    year_range = data.get('yearRange', '')  
+    logger.debug(f"[IIC DOCX] Received yearRange: '{year_range}'")
+    
     import tempfile, uuid, os
     temp_dir = tempfile.gettempdir()
     filename = f"iic_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
+    
+    template_path = 'assets/II_c.docx'
+    if year_range:
+        temp_template_path = os.path.join(temp_dir, f"temp_iic_template_{uuid.uuid4().hex}.docx")
+        replacements = {"${yearRange}": year_range}
+        fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
+        template_path = temp_template_path
+    
     from server.tables import create_iic_docx
-    create_iic_docx(databases, output_path)
+    create_iic_docx(databases, output_path, template_path)
+    
+    if year_range and os.path.exists(temp_template_path):
+        try:
+            os.remove(temp_template_path)
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary template file: {e}")
+    
     from fastapi.responses import FileResponse
     return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     
 @app.post("/generate-iii-a-docx/")
 async def generate_iii_a_docx_endpoint(request: Request):
     projects = await request.json()
-    projects = await request.json()
+    year_range = request.headers.get('yearrange', '')
+    logger.debug(f"[IIIA DOCX] Received yearRange: '{year_range}'")
+    
+    import tempfile, uuid, os
     temp_dir = tempfile.gettempdir()
     filename = f"iii_a_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
-    create_iii_a_docx(projects, output_path)
+    
+    template_path = 'assets/III_a.docx'
+    if year_range:
+        temp_template_path = os.path.join(temp_dir, f"temp_iii_a_template_{uuid.uuid4().hex}.docx")
+        replacements = {"${yearRange}": year_range}
+        fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
+        template_path = temp_template_path
+    
+    from server.tables import create_iii_a_docx
+    create_iii_a_docx(projects, output_path, template_path)
+    
+    if year_range and os.path.exists(temp_template_path):
+        try:
+            os.remove(temp_template_path)
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary template file: {e}")
+    
+    from fastapi.responses import FileResponse
     return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 @app.post("/generate-iii-b-docx/")
 async def generate_iii_b_docx_endpoint(request: Request):
     projects = await request.json()
+    year_range = request.headers.get('yearrange', '')
+    logger.debug(f"[IIIB DOCX] Received yearRange: '{year_range}'")
+    
+    import tempfile, uuid, os
     temp_dir = tempfile.gettempdir()
     filename = f"iii_b_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
-    create_iii_b_docx(projects, output_path)
+    
+    template_path = 'assets/III_b.docx'
+    if year_range:
+        temp_template_path = os.path.join(temp_dir, f"temp_iii_b_template_{uuid.uuid4().hex}.docx")
+        replacements = {"${yearRange}": year_range}
+        fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
+        template_path = temp_template_path
+    
+    from server.tables import create_iii_b_docx
+    create_iii_b_docx(projects, output_path, template_path)
+    
+    if year_range and os.path.exists(temp_template_path):
+        try:
+            os.remove(temp_template_path)
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary template file: {e}")
+    
+    from fastapi.responses import FileResponse
     return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 @app.post("/convert-docx")
@@ -681,6 +772,7 @@ def fill_placeholders_and_bullets(template_path, output_path, replacements):
                             run.font.name = 'Palatino Linotype'
                             run.font.size = Pt(14)
                             run.bold = True
+                            run.font.color.rgb = RGBColor(0, 0, 0)
         for footer in [section.footer, section.first_page_footer, section.even_page_footer]:
             for para in footer.paragraphs:
                 for ph, val in replacements.items():
@@ -689,6 +781,7 @@ def fill_placeholders_and_bullets(template_path, output_path, replacements):
                         for run in para.runs:
                             run.font.name = 'Palatino Linotype'
                             run.font.size = Pt(12)
+                            run.font.color.rgb = RGBColor(0, 0, 0)
     doc.save(output_path)
 
 def replace_placeholder_in_paragraph(para, placeholder, replacement):
@@ -748,16 +841,72 @@ async def generate_ib_docx_endpoint(request: Request):
 
 @app.post("/generate-iiic-docx/")
 async def generate_iiic_docx_endpoint(request: Request):
-    data = await request.json()
-    import tempfile, uuid, os
-    temp_dir = tempfile.gettempdir()
-    filename = f"iiic_{uuid.uuid4().hex}.docx"
-    output_path = os.path.join(temp_dir, filename)
-    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'III_c.docx')
-    doc = Document(template_path)
-    create_iiic_logframe_table(data, output_path, doc=doc)
-    from fastapi.responses import FileResponse
-    return FileResponse(output_path, filename="iiic.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    try:
+        data = await request.json()
+        year_range = request.headers.get('yearrange', '')
+        logger.debug(f"[IIIC DOCX] Received yearRange: '{year_range}'")
+        logger.debug(f"[IIIC DOCX] Received data: {data}")
+        
+        import tempfile, uuid, os
+        temp_dir = tempfile.gettempdir()
+        filename = f"iiic_{uuid.uuid4().hex}.docx"
+        output_path = os.path.join(temp_dir, filename)
+        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'III_c.docx')
+        
+        logger.debug(f"[IIIC DOCX] Template path: {template_path}")
+        if not os.path.exists(template_path):
+            error_msg = f"Template file not found at {template_path}"
+            logger.error(error_msg)
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        if year_range:
+            temp_template_path = os.path.join(temp_dir, f"temp_iiic_template_{uuid.uuid4().hex}.docx")
+            replacements = {"${yearRange}": year_range}
+            fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
+            template_path = temp_template_path
+            logger.debug(f"[IIIC DOCX] Using temp template: {template_path}")
+        
+        doc = Document(template_path)
+        logger.debug(f"[IIIC DOCX] Document loaded successfully")
+        
+        # Handle the data structure from frontend
+        logframes = data.get('logframes', [])
+        if not logframes:
+            # Fallback for single logframe structure
+            logframes = [data]
+        
+        logger.debug(f"[IIIC DOCX] Processing {len(logframes)} logframes")
+        
+        # Process each logframe
+        for i, logframe in enumerate(logframes):
+            logger.debug(f"[IIIC DOCX] Processing logframe {i+1}: {logframe}")
+            if i > 0:
+                # Add spacing between multiple logframes
+                doc.add_paragraph()
+                doc.add_paragraph()
+            
+            # Create the logframe table for this project (don't pass output_path when using existing doc)
+            create_iiic_logframe_table(logframe, None, doc=doc)
+        
+        # Save the final document
+        doc.save(output_path)
+        logger.debug(f"[IIIC DOCX] Document saved to: {output_path}")
+        
+        if year_range and os.path.exists(temp_template_path):
+            try:
+                os.remove(temp_template_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove temporary template file: {e}")
+        
+        from fastapi.responses import FileResponse
+        return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in generate_iiic_docx_endpoint: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

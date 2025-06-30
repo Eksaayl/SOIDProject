@@ -2,18 +2,15 @@ import os
 import io
 import base64
 import tempfile
-import logging
 import traceback
+import logging
 from typing import Dict, Any
 from docx import Document
 from docx.shared import Inches, Pt
 from docx.oxml import parse_xml
 from docx.oxml.ns import qn
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Set up logger
 logger = logging.getLogger(__name__)
 
 def replace_first_picture_content_control(doc, image_path):
@@ -55,10 +52,6 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
     Returns:
         bytes: The generated DOCX file as bytes
     """
-    logger.debug("Starting document generation")
-    logger.debug(f"Template path: {template_path}")
-    logger.debug(f"Received data keys: {list(data.keys())}")
-    
     try:
         if not os.path.exists(template_path):
             error_msg = f"Template file not found at {template_path}"
@@ -78,7 +71,6 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
                 if key != 'organizationalStructure':
                     placeholder = f'${{{key}}}'
                     if placeholder in paragraph.text:
-                        logger.debug(f"Replacing {placeholder} in paragraph with {value}")
                         paragraph.text = paragraph.text.replace(placeholder, str(value))
 
         for table in doc.tables:
@@ -88,7 +80,6 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
                         if key != 'organizationalStructure':
                             placeholder = f'${{{key}}}'
                             if placeholder in cell.text:
-                                logger.debug(f"Replacing {placeholder} in table cell with {value}")
                                 cell.text = cell.text.replace(placeholder, str(value))
         
         for section in doc.sections:
@@ -117,13 +108,10 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_img:
                     temp_img.write(image_data)
                     temp_img_path = temp_img.name
-                
-                logger.debug(f"Created temporary image file at: {temp_img_path}")
 
                 found = False
                 for i, paragraph in enumerate(doc.paragraphs):
                     if '${organizationalStructure}' in paragraph.text:
-                        logger.debug("Found image placeholder in paragraph. Replacing with image.")
                         paragraph.text = paragraph.text.replace('${organizationalStructure}', '')
                         run = paragraph.add_run()
                         run.add_picture(temp_img_path, width=Inches(8.29), height=Inches(5.27))
@@ -133,11 +121,9 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
                     logger.warning("Image placeholder not found in document.")
                 
                 os.unlink(temp_img_path)
-                logger.debug("Temporary image file cleaned up")
             except Exception as e:
                 error_msg = f"Error processing image: {str(e)}"
                 logger.error(error_msg)
-                logger.error(traceback.format_exc())
                 raise
         else:
             logger.warning("No organizational structure image provided")
@@ -146,18 +132,15 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
             docx_bytes = io.BytesIO()
             doc.save(docx_bytes)
             docx_bytes.seek(0)
-            logger.debug("Document saved to bytes successfully")
             return docx_bytes.getvalue()
         except Exception as e:
             error_msg = f"Error saving document: {str(e)}"
             logger.error(error_msg)
-            logger.error(traceback.format_exc())
             raise
             
     except Exception as e:
         error_msg = f"Error in generate_part_ib_docx: {str(e)}"
         logger.error(error_msg)
-        logger.error(traceback.format_exc())
         raise
 
 def format_number(value: str) -> str:
@@ -174,14 +157,12 @@ def format_number(value: str) -> str:
         return '0'
     value = value.strip().replace(',', '')
     if not value.replace('-', '').replace('.', '').isdigit():
-        logger.debug(f"Value '{value}' is not a number, returning as is")
         return value
         
     try:
         num = int(float(value))
         return f"{num:,}"
     except (ValueError, TypeError) as e:
-        logger.debug(f"Error formatting number '{value}': {str(e)}")
         return value
 
 def process_part_ib_data(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -195,7 +176,6 @@ def process_part_ib_data(data: Dict[str, Any]) -> Dict[str, Any]:
         Dict[str, Any]: Processed data ready for document generation
     """
     try:
-        logger.debug("Processing Part IB data")
         numeric_fields = [
             'mooe', 'co', 'total', 'nicthsProjectCost', 'hsdvProjectCost', 'hecsProjectCost',
             'totalEmployees', 'regionalOffices', 'provincialOffices',
@@ -211,12 +191,11 @@ def process_part_ib_data(data: Dict[str, Any]) -> Dict[str, Any]:
             if field in processed_data:
                 processed_data[field] = format_number(processed_data[field])
         
-        logger.debug("Data processing completed successfully")
         return processed_data
     except Exception as e:
-        logger.error(f"Error in process_part_ib_data: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise 
+        error_msg = f"Error processing Part IB data: {str(e)}"
+        logger.error(error_msg)
+        raise
 
 def generate_ib_docx(data):
     try:
@@ -292,5 +271,6 @@ def generate_ib_docx(data):
 
         return temp_path
     except Exception as e:
-        print(f"Error generating Part IB document: {str(e)}")
+        error_msg = f"Error generating Part IB document: {str(e)}"
+        logger.error(error_msg)
         raise 

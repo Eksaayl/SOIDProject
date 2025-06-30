@@ -29,12 +29,16 @@ String xmlEscape(String input) => input
 
 Future<Uint8List> generateDocxWithImages({
   required Map<String, Uint8List> images,
+  required String yearRange,
 }) async {
   try {
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('${Config.serverUrl}/generate-docx'),
     );
+
+    final formattedYearRange = formatYearRange(yearRange);
+    request.headers['yearrange'] = formattedYearRange;
 
     final templateBytes = await rootBundle.load('assets/IV_b.docx');
     request.files.add(
@@ -246,7 +250,7 @@ class _PartIVBState extends State<PartIVB> {
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part IV.B',
-        'isFinalized': finalize || _isFinalized,
+        'isFinalized': finalize ? false : _isFinalized,
       };
 
       if (!(_isFinalized)) {
@@ -257,13 +261,49 @@ class _PartIVBState extends State<PartIVB> {
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
 
-      if (finalize) {
-        await createSubmissionNotification('Part IV.B', _yearRange);
+      // Generate and upload DOCX if all images are present
+      if (_existingBytes != null && _proposedBytes != null && _placementBytes != null) {
+        try {
+          final bytes = await generateDocxWithImages(
+            images: {
+              'Existing': _existingBytes!,
+              'Proposed': _proposedBytes!,
+              'Placement': _placementBytes!,
+            },
+            yearRange: _yearRange,
+          );
+          final docxRef = _storage.ref().child('$_yearRange/IV.B/document.docx');
+          await docxRef.putData(bytes, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+          final docxUrl = await docxRef.getDownloadURL();
+          await _sectionRef.set({'docxUrl': docxUrl}, SetOptions(merge: true));
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error generating/uploading DOCX: ' + e.toString())),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX not generated: Please upload all three images (Existing, Proposed, and Placement)')),
+        );
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-      );
+      if (finalize) {
+        await createSubmissionNotification('Part IV.B', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part IV.B submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part IV.B saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
+      }
       
       if (finalize) {
         Navigator.of(context).pop();
@@ -277,46 +317,36 @@ class _PartIVBState extends State<PartIVB> {
     }
   }
 
-  Future<void> _compileDocx() async {
-    if (_existingBytes == null || _proposedBytes == null || _placementBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select all three images'))
-      );
-      return;
-    }
-
+  Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
+      final fileName = 'document.docx';
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/IV.B/document.docx');
-      final bytes = await docxRef.getData();
-      
-      if (bytes == null) {
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: docxBytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.'))
-        );
-        return;
-      }
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: 'document.docx',
-          bytes: bytes,
-          mimeType: MimeType.microsoftWord,
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
         );
       } else {
-        final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/document.docx';
-        final file = File(path);
-        await file.writeAsBytes(bytes);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.')),
+        );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document downloaded from storage successfully'))
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error downloading document: $e'))
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
     } finally {
       setState(() => _compiling = false);
@@ -661,8 +691,8 @@ class _PartIVBState extends State<PartIVB> {
               ),
               IconButton(
                 icon: const Icon(Icons.file_download),
-                onPressed: _compiling ? null : _compileDocx,
-                tooltip: 'Generate DOCX',
+                onPressed: _compiling ? null : _downloadDocx,
+                tooltip: 'Download DOCX',
                 color: const Color(0xff021e84),
               ),
             ],

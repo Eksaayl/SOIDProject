@@ -28,6 +28,7 @@ Future<Uint8List> generateDocxWithImage({
   required String assetPath,
   required String placeholder,
   required Uint8List imageBytes,
+  required String yearRange,
 }) async {
   final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
   final archive = ZipDecoder().decodeBytes(bytes);
@@ -35,7 +36,8 @@ Future<Uint8List> generateDocxWithImage({
   const imagePath = 'word/media/image1.png';
   archive.addFile(ArchiveFile(imagePath, imageBytes.length, imageBytes));
 
-  final relsFile = archive.firstWhere((f) => f.name == 'word/_rels/document.xml.rels');
+  final relsFile =
+      archive.firstWhere((f) => f.name == 'word/_rels/document.xml.rels');
   var relsXml = utf8.decode(relsFile.content as List<int>);
   const rid = 'rId1000';
   if (!relsXml.contains(rid)) {
@@ -43,11 +45,16 @@ Future<Uint8List> generateDocxWithImage({
       '</Relationships>',
       '''<Relationship Id="$rid" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/></Relationships>''',
     );
-    archive.addFile(ArchiveFile('word/_rels/document.xml.rels', utf8.encode(relsXml).length, utf8.encode(relsXml)));
+    archive.addFile(ArchiveFile('word/_rels/document.xml.rels',
+        utf8.encode(relsXml).length, utf8.encode(relsXml)));
   }
 
   final doc = archive.firstWhere((f) => f.name == 'word/document.xml');
   var docXml = utf8.decode(doc.content as List<int>);
+
+  final formattedYearRange = formatYearRange(yearRange);
+  docXml = docXml.replaceAll('\${yearRange}', formattedYearRange);
+
   final drawingXml = '''
     <w:r>
       <w:drawing>
@@ -76,7 +83,79 @@ Future<Uint8List> generateDocxWithImage({
     </w:r>
   ''';
   docXml = docXml.replaceAll(placeholder, drawingXml);
-  archive.addFile(ArchiveFile('word/document.xml', utf8.encode(docXml).length, utf8.encode(docXml)));
+  archive.addFile(ArchiveFile(
+      'word/document.xml', utf8.encode(docXml).length, utf8.encode(docXml)));
+
+  final headerFiles = archive
+      .where((f) => f.name.contains('header') && f.name.endsWith('.xml'))
+      .toList();
+  for (final headerFile in headerFiles) {
+    var headerXml = utf8.decode(headerFile.content as List<int>);
+
+    print('Processing header file: ${headerFile.name}');
+    print('Formatted yearRange: $formattedYearRange');
+
+    final complexPattern = RegExp(
+      r'\$\{</w:t></w:r>.*?<w:t>yearRange</w:t>.*?<w:t>\}',
+      dotAll: true,
+    );
+
+    final beforeReplacement = headerXml;
+    headerXml = headerXml.replaceAllMapped(complexPattern, (match) {
+      print('✓ Matched complex yearRange placeholder in ${headerFile.name}!');
+      return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$formattedYearRange</w:t></w:r>''';
+    });
+
+    final simplePattern = RegExp(r'\$\{yearRange\}');
+    headerXml = headerXml.replaceAllMapped(simplePattern, (match) {
+      print('✓ Matched simple yearRange placeholder in ${headerFile.name}!');
+      return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$formattedYearRange</w:t></w:r>''';
+    });
+
+    if (beforeReplacement != headerXml) {
+      print('✓ Header replacement successful for ${headerFile.name}');
+    } else {
+      print('✗ No yearRange placeholders found in ${headerFile.name}');
+    }
+
+    archive.addFile(ArchiveFile(headerFile.name, utf8.encode(headerXml).length,
+        utf8.encode(headerXml)));
+  }
+
+  final footerFiles = archive
+      .where((f) => f.name.contains('footer') && f.name.endsWith('.xml'))
+      .toList();
+  for (final footerFile in footerFiles) {
+    var footerXml = utf8.decode(footerFile.content as List<int>);
+
+    print('Processing footer file: ${footerFile.name}');
+
+    final complexPattern = RegExp(
+      r'\$\{</w:t></w:r>.*?<w:t>yearRange</w:t>.*?<w:t>\}',
+      dotAll: true,
+    );
+
+    final beforeReplacement = footerXml;
+    footerXml = footerXml.replaceAllMapped(complexPattern, (match) {
+      print('✓ Matched complex yearRange placeholder in ${footerFile.name}!');
+      return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$formattedYearRange</w:t></w:r>''';
+    });
+
+    final simplePattern = RegExp(r'\$\{yearRange\}');
+    footerXml = footerXml.replaceAllMapped(simplePattern, (match) {
+      print('✓ Matched simple yearRange placeholder in ${footerFile.name}!');
+      return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$formattedYearRange</w:t></w:r>''';
+    });
+
+    if (beforeReplacement != footerXml) {
+      print('✓ Footer replacement successful for ${footerFile.name}');
+    } else {
+      print('✗ No yearRange placeholders found in ${footerFile.name}');
+    }
+
+    archive.addFile(ArchiveFile(footerFile.name, utf8.encode(footerXml).length,
+        utf8.encode(footerXml)));
+  }
 
   final out = ZipEncoder().encode(archive)!;
   return Uint8List.fromList(out);
@@ -85,7 +164,8 @@ Future<Uint8List> generateDocxWithImage({
 class PartICFormPage extends StatefulWidget {
   final String documentId;
   const PartICFormPage({Key? key, required this.documentId}) : super(key: key);
-  @override _PartICFormPageState createState() => _PartICFormPageState();
+  @override
+  _PartICFormPageState createState() => _PartICFormPageState();
 }
 
 class _PartICFormPageState extends State<PartICFormPage> {
@@ -100,12 +180,18 @@ class _PartICFormPageState extends State<PartICFormPage> {
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
   final _storage = FirebaseStorage.instance;
-  String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
-  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String get _userId =>
+      _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
+  String get _yearRange {
+    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+    print('Getting yearRange: $yearRange');
+    return yearRange;
+  }
 
   @override
   void initState() {
     super.initState();
+    print('initState - yearRange: $_yearRange');
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(_yearRange)
@@ -121,12 +207,14 @@ class _PartICFormPageState extends State<PartICFormPage> {
       final data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         setState(() {
-          _isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
+          _isFinalized = (data['isFinalized'] as bool? ?? false) ||
+              (data['screening'] as bool? ?? false);
           _fileUrl = data['fileUrl'] as String?;
         });
 
         try {
-          final imageRef = _storage.ref().child('$_yearRange/I.C/functionalInterface.png');
+          final imageRef =
+              _storage.ref().child('$_yearRange/I.C/functionalInterface.png');
           final imageBytes = await imageRef.getData();
           if (imageBytes != null) {
             setState(() {
@@ -138,9 +226,8 @@ class _PartICFormPageState extends State<PartICFormPage> {
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Load error: $e'))
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Load error: $e')));
     } finally {
       setState(() => _loading = false);
     }
@@ -155,30 +242,30 @@ class _PartICFormPageState extends State<PartICFormPage> {
         setState(() => _pickedBytes = bytes);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Image pick error: $e'))
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Image pick error: $e')));
     }
   }
 
   Future<void> _saveSection({bool finalize = false}) async {
     if (_pickedBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an image first'))
-      );
+          const SnackBar(content: Text('Please select an image first')));
       return;
     }
 
     setState(() => _saving = true);
 
     try {
-      final imageRef = _storage.ref().child('$_yearRange/I.C/functionalInterface.png');
+      final imageRef =
+          _storage.ref().child('$_yearRange/I.C/functionalInterface.png');
       await imageRef.putData(_pickedBytes!);
 
       final docxBytes = await generateDocxWithImage(
         assetPath: 'assets/c.docx',
         placeholder: '\${functionalInterface}',
         imageBytes: _pickedBytes!,
+        yearRange: _yearRange,
       );
 
       final docxRef = _storage.ref().child('$_yearRange/I.C/document.docx');
@@ -187,14 +274,14 @@ class _PartICFormPageState extends State<PartICFormPage> {
 
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
-      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
-      final formattedYearRange = formatYearRange(yearRange);
+      final formattedYearRange = formatYearRange(_yearRange);
       final payload = {
         'fileUrl': docxUrl,
+        'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'lastModifiedBy': username,
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part I.C',
+        'isFinalized': finalize ? false : _isFinalized,
         'yearRange': formattedYearRange,
       };
 
@@ -205,73 +292,66 @@ class _PartICFormPageState extends State<PartICFormPage> {
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'),
-          backgroundColor: finalize ? Colors.green : null,
-        )
-      );
-      
+
       if (finalize) {
         await createSubmissionNotification('Part I.C', _yearRange);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Part I.C submitted for admin approval. You will be notified once it is reviewed.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 4),
+        ));
+        if (finalize) {
+          Navigator.of(context).pop();
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Part I.C saved successfully (not finalized)'),
+          backgroundColor: Colors.green,
+        ));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Save error: $e'),
-          backgroundColor: Colors.red,
-        )
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Save error: $e'),
+        backgroundColor: Colors.red,
+      ));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  Future<void> _compileDocx() async {
-    if (_pickedBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select an image first'),
-          backgroundColor: Colors.red,
-        )
-      );
-      return;
-    }
-
+  Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
-      final bytes = await generateDocxWithImage(
-        assetPath: 'assets/c.docx',
-        placeholder: '\${functionalInterface}',
-        imageBytes: _pickedBytes!,
-      );
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: 'document.docx',
-          bytes: bytes,
-          ext: 'docx',
-          mimeType: MimeType.microsoftWord,
+      final fileName = 'document.docx';
+      final storage = FirebaseStorage.instance;
+      final docxRef = storage.ref().child('$_yearRange/I.C/document.docx');
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: docxBytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
         );
       } else {
-        final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/document.docx';
-        await File(path).writeAsBytes(bytes);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'No DOCX file found in storage. Please save or finalize first.')),
+        );
       }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Document compiled successfully'),
-          backgroundColor: Colors.green,
-        )
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Compile error: $e'),
-          backgroundColor: Colors.red,
-        )
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
     } finally {
       if (mounted) setState(() => _compiling = false);
@@ -292,7 +372,8 @@ class _PartICFormPageState extends State<PartICFormPage> {
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
               backgroundColor: Colors.white,
               elevation: 20,
               title: Container(
@@ -313,7 +394,8 @@ class _PartICFormPageState extends State<PartICFormPage> {
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(Icons.warning_amber, color: Colors.white, size: 24),
+                      child: const Icon(Icons.warning_amber,
+                          color: Colors.white, size: 24),
                     ),
                     const SizedBox(width: 12),
                     const Expanded(
@@ -373,7 +455,8 @@ class _PartICFormPageState extends State<PartICFormPage> {
                   child: TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
                     style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                         side: BorderSide(color: Colors.grey.shade300),
@@ -391,7 +474,10 @@ class _PartICFormPageState extends State<PartICFormPage> {
                 Container(
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
+                      colors: [
+                        Color.fromARGB(255, 132, 2, 2),
+                        Color.fromARGB(255, 175, 30, 30)
+                      ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -410,8 +496,10 @@ class _PartICFormPageState extends State<PartICFormPage> {
                       backgroundColor: Colors.transparent,
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                     child: const Text(
                       'Leave Anyway',
@@ -453,28 +541,30 @@ class _PartICFormPageState extends State<PartICFormPage> {
             else ...[
               IconButton(
                 icon: const Icon(Icons.save),
-                onPressed: _isFinalized ? null : () => _saveSection(finalize: false),
+                onPressed:
+                    _isFinalized ? null : () => _saveSection(finalize: false),
                 tooltip: 'Save',
                 color: const Color(0xff021e84),
               ),
               IconButton(
                 icon: const Icon(Icons.check),
-                onPressed: _isFinalized ? null : () async {
-                  final confirmed = await showFinalizeConfirmation(
-                    context,
-                    'Part I.C - The Department/Agency and its Environment (Functional Interface Chart)'
-                  );
-                  if (confirmed) {
-                    _saveSection(finalize: true);
-                  }
-                },
+                onPressed: _isFinalized
+                    ? null
+                    : () async {
+                        final confirmed = await showFinalizeConfirmation(
+                            context,
+                            'Part I.C - The Department/Agency and its Environment (Functional Interface Chart)');
+                        if (confirmed) {
+                          _saveSection(finalize: true);
+                        }
+                      },
                 tooltip: 'Finalize',
                 color: _isFinalized ? Colors.grey : const Color(0xff021e84),
               ),
               IconButton(
                 icon: const Icon(Icons.file_download),
-                onPressed: _compileDocx,
-                tooltip: 'Compile DOCX',
+                onPressed: _downloadDocx,
+                tooltip: 'Download DOCX',
                 color: const Color(0xff021e84),
               ),
             ],
@@ -523,7 +613,8 @@ class _PartICFormPageState extends State<PartICFormPage> {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
+                                    color: const Color(0xff021e84)
+                                        .withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: const Icon(
@@ -579,7 +670,8 @@ class _PartICFormPageState extends State<PartICFormPage> {
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xff021e84).withOpacity(0.1),
+                                    color: const Color(0xff021e84)
+                                        .withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: const Icon(
@@ -627,23 +719,29 @@ class _PartICFormPageState extends State<PartICFormPage> {
                                 height: 250,
                                 width: double.infinity,
                                 decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade300),
+                                  border:
+                                      Border.all(color: Colors.grey.shade300),
                                   borderRadius: BorderRadius.circular(12),
                                   color: Colors.grey.shade50,
                                 ),
                                 child: const Center(
-                                  child: Icon(Icons.image_outlined, size: 64, color: Colors.grey),
+                                  child: Icon(Icons.image_outlined,
+                                      size: 64, color: Colors.grey),
                                 ),
                               ),
                             const SizedBox(height: 20),
                             Center(
                               child: ElevatedButton.icon(
                                 icon: Icon(
-                                  _pickedBytes == null ? Icons.upload_file : Icons.edit,
+                                  _pickedBytes == null
+                                      ? Icons.upload_file
+                                      : Icons.edit,
                                   color: Colors.white,
                                 ),
                                 label: Text(
-                                  _pickedBytes == null ? 'Upload Image' : 'Change Image',
+                                  _pickedBytes == null
+                                      ? 'Upload Image'
+                                      : 'Change Image',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,

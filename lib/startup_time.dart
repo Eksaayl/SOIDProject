@@ -46,7 +46,6 @@ class _StartupTimePageState extends State<StartupTimePage> {
     
     final yearRange = userDoc.data()?['year_range'] as String?;
     if (yearRange != null) {
-      // Find the index that matches the year range
       for (int i = 0; i < _timeRanges.length; i++) {
         if (_getYearCode(i) == yearRange) {
           if (mounted) {

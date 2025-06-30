@@ -58,7 +58,7 @@ Future<Uint8List> generateDocxBySearchReplace({
   print('Provided replacements: ${replacements.keys}');
 
   final complete = <String, String>{
-    for (var key in allKeys) '\${$key}': replacements[key] ?? '',
+    for (var key in allKeys) '${key}': replacements[key] ?? '',
   };
 
   print('Final replacements map: $complete');
@@ -67,17 +67,88 @@ Future<Uint8List> generateDocxBySearchReplace({
   complete.forEach((ph, val) {
     String processedValue = val;
 
-    if (ph == '\${strategicChallenges}' && val.contains('•')) {
-      final bulletCount = '•'.allMatches(val).length;
-      if (bulletCount > 1) {
-        processedValue = val.replaceAll('\n\n', '\n\n\n');
-      }
+    if (ph == 'yearRange') {
+      final escapedValue = xmlEscape(processedValue);
+      final formattedValue = '<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$escapedValue</w:t></w:r>';
+      print('Replacing $ph with formatted black text');
+      finalXml = finalXml.replaceAll('${ph}', formattedValue);
+    } else {
+      print(
+        'Replacing $ph with ${processedValue.length > 50 ? "${processedValue.substring(0, 50)}..." : processedValue}',
+      );
+      finalXml = finalXml.replaceAll('${ph}', xmlEscape(processedValue));
     }
+  });
 
-    print(
-      'Replacing $ph with ${processedValue.length > 50 ? "${processedValue.substring(0, 50)}..." : processedValue}',
-    );
-    finalXml = finalXml.replaceAll(ph, xmlEscape(processedValue));
+  final newArchive = Archive();
+  for (final file in archive) {
+    if (file.name == 'word/document.xml') {
+      final data = utf8.encode(finalXml);
+      newArchive.addFile(ArchiveFile(file.name, data.length, data));
+    } else {
+      newArchive.addFile(file);
+    }
+  }
+
+  final out = ZipEncoder().encode(newArchive)!;
+  return Uint8List.fromList(out);
+}
+
+Future<Uint8List> generateDocxBySearchReplaceFromFile({
+  required String filePath,
+  required Map<String, String> replacements,
+}) async {
+  print('Loading template from file: $filePath');
+  final bytes = await File(filePath).readAsBytes();
+  print('Template file size: ${bytes.length} bytes');
+
+  final archive = ZipDecoder().decodeBytes(bytes);
+  final docFile = archive.firstWhere((f) => f.name == 'word/document.xml');
+  String xmlStr = utf8.decode(docFile.content as List<int>);
+
+  print('Original XML content (first 500 chars):');
+  print(xmlStr.substring(0, xmlStr.length > 500 ? 500 : xmlStr.length));
+
+  final cleanXml = xmlStr.replaceAllMapped(
+    RegExp(r'\$\{.*?\}', multiLine: true, dotAll: true),
+    (match) {
+      String placeholder = match.group(0)!;
+      placeholder = placeholder.replaceAll(RegExp(r'<[^>]+>'), '');
+      placeholder = placeholder.replaceAll(RegExp(r'\s+'), '');
+      return placeholder;
+    },
+  );
+
+  print('Cleaned XML placeholders:');
+  print(cleanXml.substring(0, cleanXml.length > 500 ? 500 : cleanXml.length));
+
+  final pattern = RegExp(r'\$\{(.+?)\}');
+  final allKeys = pattern.allMatches(cleanXml).map((m) => m.group(1)!).toSet();
+
+  print('Found placeholders: $allKeys');
+  print('Provided replacements: ${replacements.keys}');
+
+  final complete = <String, String>{
+    for (var key in allKeys) '${key}': replacements[key] ?? '',
+  };
+
+  print('Final replacements map: $complete');
+
+  String finalXml = cleanXml;
+  complete.forEach((ph, val) {
+    String processedValue = val;
+
+    if (ph == 'yearRange') {
+      final escapedValue = xmlEscape(processedValue);
+      final formattedValue = '<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$escapedValue</w:t></w:r>';
+      print('Replacing $ph with formatted black text');
+      finalXml = finalXml.replaceAll('${ph}', formattedValue);
+    } else {
+      print(
+        'Replacing $ph with ${processedValue.length > 50 ? "${processedValue.substring(0, 50)}..." : processedValue}',
+      );
+      finalXml = finalXml.replaceAll('${ph}', xmlEscape(processedValue));
+    }
   });
 
   final newArchive = Archive();
@@ -209,20 +280,67 @@ class _PartIVAFormPageState extends State<PartIVAFormPage> {
     return await snapshot.ref.getDownloadURL();
   }
 
+  Future<void> _generateAndUploadDocx() async {
+    try {
+      // Get the year-specific template from Firebase Storage
+      final storage = FirebaseStorage.instance;
+      final templateRef = storage.ref().child('$_yearRange/IV.A/IV_a.docx');
+      final templateBytes = await templateRef.getData();
+      
+      if (templateBytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Template not found. Please upload a template first.')),
+        );
+        return;
+      }
+
+      // Create a temporary file for the template
+      final tempDir = await getTemporaryDirectory();
+      final tempTemplatePath = '${tempDir.path}/temp_iv_a_template_${DateTime.now().millisecondsSinceEpoch}.docx';
+      await File(tempTemplatePath).writeAsBytes(templateBytes);
+
+      // Prepare replacements
+      final formattedYearRange = formatYearRange(_yearRange);
+      final replacements = {
+        'yearRange': formattedYearRange,
+        // Add other placeholders as needed
+      };
+
+      // Generate DOCX using the template
+      final generatedBytes = await generateDocxBySearchReplaceFromFile(
+        filePath: tempTemplatePath,
+        replacements: replacements,
+      );
+
+      // Upload the generated DOCX to Firebase Storage
+      final docxRef = storage.ref().child('$_yearRange/IV.A/document.docx');
+      await docxRef.putData(generatedBytes);
+      
+      // Clean up temporary file
+      await File(tempTemplatePath).delete();
+
+      setState(() {
+        _uploadedFileBytes = generatedBytes;
+        _fileName = 'Part_IV_A_Deployment_of_ICT_Equipment_and_Services.docx';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('DOCX generated and uploaded successfully')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error generating DOCX: $e')),
+      );
+    }
+  }
+
   Future<void> _save({bool finalize = false}) async {
     if (!_formKey.currentState!.validate()) return;
-    if (_uploadedFileBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please upload a document'))
-      );
-      return;
-    }
-
     setState(() => _saving = true);
-
     try {
+      // Generate DOCX from template
+      await _generateAndUploadDocx();
       final fileUrl = await _uploadToStorage();
-
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
       final payload = {
@@ -230,29 +348,32 @@ class _PartIVAFormPageState extends State<PartIVAFormPage> {
         'fileUrl': fileUrl,
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
-        'isFinalized': _isFinalized,
+        'isFinalized': finalize ? false : _isFinalized,
         'screening': finalize || _isFinalized,
         'sectionTitle': 'Part IV.A',
       };
-
       if (!_isFinalized) {
         payload['createdAt'] = FieldValue.serverTimestamp();
         payload['createdBy'] = username;
       }
-
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
-
       if (finalize) {
         await createSubmissionNotification('Part IV.A', _yearRange);
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(finalize ? 'Finalized' : 'Saved (not finalized)'))
-      );
-      
-      if (finalize) {
-        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part IV.A submitted for admin approval. You will be notified once it is reviewed.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          )
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Part IV.A saved successfully (not finalized)'),
+            backgroundColor: Colors.green,
+          )
+        );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -302,34 +423,36 @@ class _PartIVAFormPageState extends State<PartIVAFormPage> {
     }
   }
 
-  Future<void> _downloadTemplate() async {
+  Future<void> _downloadDocx() async {
+    setState(() => _compiling = true);
     try {
+      final fileName = 'document.docx';
       final storage = FirebaseStorage.instance;
-      final ref = storage.ref().child('$_yearRange/IV.A/IV_a.docx');
-      final bytes = await ref.getData();
-      if (bytes != null) {
+      final docxRef = storage.ref().child('$_yearRange/IV.A/document.docx');
+      final docxBytes = await docxRef.getData();
+      if (docxBytes != null) {
         if (kIsWeb) {
           await FileSaver.instance.saveFile(
-            name: 'Part_IV.A_Template.docx',
-            bytes: bytes,
+            name: fileName,
+            bytes: docxBytes,
             mimeType: MimeType.microsoftWord,
           );
         } else {
-          final dir = await getApplicationDocumentsDirectory();
-          final path = '${dir.path}/Part_IV.A_Template.docx';
-          await File(path).writeAsBytes(bytes);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Template downloaded to $path')),
-          );
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(docxBytes);
         }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DOCX downloaded from storage!')),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Template not found in storage.')),
+          const SnackBar(content: Text('No DOCX file found in storage. Please save or finalize first.')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error downloading template: $e')),
+        SnackBar(content: Text('Download error: ${e.toString()}')),
       );
     } finally {
       setState(() => _compiling = false);
@@ -531,7 +654,7 @@ class _PartIVAFormPageState extends State<PartIVAFormPage> {
               ),
               IconButton(
                 icon: const Icon(Icons.file_download),
-                onPressed: _compiling ? null : _compileDocx,
+                onPressed: _compiling ? null : _downloadDocx,
                 tooltip: 'Download DOCX',
                 color: const Color(0xff021e84),
               ),
@@ -614,7 +737,7 @@ class _PartIVAFormPageState extends State<PartIVAFormPage> {
                               Row(
                                 children: [
                                   ElevatedButton.icon(
-                                    onPressed: _downloadTemplate,
+                                    onPressed: _downloadDocx,
                                     icon: const Icon(Icons.download),
                                     label: const Text('Download Part IV.A Template'),
                                     style: ElevatedButton.styleFrom(

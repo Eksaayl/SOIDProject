@@ -1,9 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
@@ -12,130 +10,12 @@ import 'package:test_project/parts/part_i/part_ib.dart';
 import 'package:test_project/parts/part_i/part_ic.dart';
 import 'package:test_project/parts/part_i/part_id.dart';
 import 'package:test_project/parts/part_i/part_ie.dart';
-import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:file_picker/file_picker.dart';
-import '../services/document_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_storage/firebase_storage.dart';
 import '../config.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
-
-Future<Uint8List> generateDocxWithTextAndImage({
-  required String assetPath,
-  required Map<String, String> textReplacements,
-  String? imagePlaceholder,
-  Uint8List? imageBytes,
-}) async {
-  final bytes = (await rootBundle.load(assetPath)).buffer.asUint8List();
-  final archive = ZipDecoder().decodeBytes(bytes);
-
-  final docFile = archive.firstWhere((f) => f.name == 'word/document.xml');
-  String xmlStr = utf8.decode(docFile.content as List<int>);
-
-  if (imagePlaceholder != null && imageBytes != null) {
-    const imagePath = 'word/media/image1.png';
-    archive.addFile(ArchiveFile(imagePath, imageBytes.length, imageBytes));
-
-    final relsFile = archive.firstWhere((f) => f.name == 'word/_rels/document.xml.rels');
-    var relsXml = utf8.decode(relsFile.content as List<int>);
-    const rid = 'rIdImage1';
-    if (!relsXml.contains(rid)) {
-      relsXml = relsXml.replaceFirst(
-        '</Relationships>',
-        '''<Relationship Id="$rid" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/></Relationships>''',
-      );
-      archive.addFile(ArchiveFile('word/_rels/document.xml.rels', utf8.encode(relsXml).length, utf8.encode(relsXml)));
-    }
-
-    final drawingXml = '''<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="5486400" cy="3200400"/><wp:docPr id="1" name="Picture 1"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:blipFill><a:blip r:embed="$rid" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="5486400" cy="3200400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>''';
-    xmlStr = xmlStr.replaceAll(imagePlaceholder, drawingXml);
-  }
-
-  final pattern = RegExp(r'\$\{(.+?)\}');
-  final allKeys = pattern.allMatches(xmlStr).map((m) => m.group(1)!).toSet();
-  final replacements = <String, String>{ for (var k in allKeys) '\${$k}': textReplacements[k] ?? '' };
-
-  replacements.forEach((ph, val) {
-    final safe = val
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&apos;');
-    xmlStr = xmlStr.replaceAll(ph, safe);
-  });
-
-  final outArchive = Archive();
-  for (final f in archive) {
-    if (f.name == 'word/document.xml') {
-      final data = utf8.encode(xmlStr);
-      outArchive.addFile(ArchiveFile(f.name, data.length, data));
-    } else {
-      outArchive.addFile(f);
-    }
-  }
-
-  return Uint8List.fromList(ZipEncoder().encode(outArchive)!);
-}
-
-Future<Uint8List> generateCompiledDocx(String documentId) async {
-  final sections = FirebaseFirestore.instance
-      .collection('issp_documents')
-      .doc(documentId)
-      .collection('sections');
-
-  final snaps = await Future.wait([
-    sections.doc('I.A').get(),
-    sections.doc('I.B').get(),
-    sections.doc('I.C').get(),
-  ]);
-
-  final merged = <String, String>{};
-  Uint8List? icImage;
-  List<String> functionsIA = [];
-
-  for (var s in snaps) {
-    final data = s.data() ?? {};
-    // Collect functions from I.A for bullet formatting
-    if (s.id == 'I.A' && data['functions'] != null) {
-      try {
-        final List<dynamic> functionsJson = jsonDecode(data['functions']);
-        for (var delta in functionsJson) {
-          final doc = quill.Document.fromJson(delta);
-          final text = doc.toPlainText().trim();
-          if (text.isNotEmpty) functionsIA.add(text);
-        }
-      } catch (_) {}
-    }
-    data.forEach((k, v) {
-      if (v is String) {
-        if (k == 'functionalInterface') {
-          try {
-            icImage = base64Decode(v);
-          } catch (_) {}
-        } else {
-          merged[k] = v;
-        }
-      }
-    });
-  }
-
-  String buildWordBulletXml(List<String> items) {
-    return items.map((item) => '''<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${item.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</w:t></w:r></w:p>''').join();
-  }
-  merged['functions_bullets'] = buildWordBulletXml(functionsIA);
-
-  // Use your existing template for compiled parts
-  final bytes = await generateDocxWithTextAndImage(
-    assetPath: 'assets/templates_compiled.docx',
-    textReplacements: merged,
-    imagePlaceholder: '{functionalInterface}',
-    imageBytes: icImage,
-  );
-  return bytes;
-}
 
 class Part1 extends StatefulWidget {
   const Part1({Key? key}) : super(key: key);
@@ -185,97 +65,6 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _compileABCD() async {
-    setState(() => _isCompiling = true);
-
-    final sections = FirebaseFirestore.instance
-        .collection('issp_documents')
-        .doc(_yearRange)
-        .collection('sections');
-
-    final snaps = await Future.wait([
-      sections.doc('I.A').get(),
-      sections.doc('I.B').get(),
-      sections.doc('I.C').get(),
-      sections.doc('I.D').get(),
-    ]);
-
-    final merged = <String, String>{};
-    Uint8List? icImage;
-    List<String> functionsIA = [];
-    List<String> strategicChallenges = [];
-
-    for (var s in snaps) {
-      final data = s.data() ?? {};
-      // Collect functions from I.A for bullet formatting
-      if (s.id == 'I.A' && data['functions'] != null) {
-        try {
-          final List<dynamic> functionsJson = jsonDecode(data['functions']);
-          for (var delta in functionsJson) {
-            final doc = quill.Document.fromJson(delta);
-            final text = doc.toPlainText().trim();
-            if (text.isNotEmpty) functionsIA.add(text);
-          }
-        } catch (_) {}
-      }
-      // Collect strategic challenges from I.D for bullet formatting
-      if (s.id == 'I.D' && data['challenges'] != null) {
-        try {
-          final List<dynamic> challengesJson = jsonDecode(data['challenges']);
-          for (var delta in challengesJson) {
-            final doc = quill.Document.fromJson(delta);
-            final text = doc.toPlainText().trim();
-            if (text.isNotEmpty) strategicChallenges.add(text);
-          }
-        } catch (_) {}
-      }
-      data.forEach((k, v) {
-        if (v is String) {
-          if (k == 'functionalInterface') {
-            try {
-              icImage = base64Decode(v);
-            } catch (_) {}
-          } else {
-            merged[k] = v;
-          }
-        }
-      });
-    }
-
-    String buildWordBulletXml(List<String> items) {
-      return items.map((item) => '''<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${item.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</w:t></w:r></w:p>''').join();
-    }
-    merged['functions_bullets'] = buildWordBulletXml(functionsIA);
-    merged['strategicChallenges_bullets'] = buildWordBulletXml(strategicChallenges);
-
-    try {
-      final bytes = await generateDocxWithTextAndImage(
-        assetPath: 'assets/templates_compiled.docx',
-        textReplacements: merged,
-        imagePlaceholder: ' {functionalInterface}',
-        imageBytes: icImage,
-      );
-
-      if (kIsWeb) {
-        await FileSaver.instance.saveFile(
-          name: 'Part_I_ABCD',
-          bytes: bytes,
-          ext: 'docx',
-          mimeType: MimeType.microsoftWord,
-        );
-      } else {
-        final dir = await getApplicationDocumentsDirectory();
-        final path = '${dir.path}/Part_I_ABCD_${DateTime.now().millisecondsSinceEpoch}.docx';
-        await File(path).writeAsBytes(bytes);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to $path')));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Compile error: $e')));
-    } finally {
-      setState(() => _isCompiling = false);
-    }
-  }
-
   Future<void> mergeCompiledAndUploadsAndDownload(BuildContext context, String documentId) async {
     try {
       final storage = FirebaseStorage.instance;
@@ -290,34 +79,61 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
         firestore.collection('issp_documents').doc(_yearRange).collection('sections').doc('I.E').get(),
       ]);
 
-      final notFinalized = <String>[];
+      final sectionsWithData = <String>[];
+      final sectionsWithoutData = <String>[];
+      
       for (var i = 0; i < sectionRefs.length; i++) {
+        final sectionName = ['I.A', 'I.B', 'I.C', 'I.D', 'I.E'][i];
         final data = sectionRefs[i].data();
-        if (data == null || !(data['isFinalized'] as bool? ?? false)) {
-          notFinalized.add(['I.A', 'I.B', 'I.C', 'I.D', 'I.E'][i]);
+        if (data != null && data.isNotEmpty) {
+          sectionsWithData.add(sectionName);
+        } else {
+          sectionsWithoutData.add(sectionName);
         }
       }
 
-      if (notFinalized.isNotEmpty) {
+      if (sectionsWithoutData.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please finalize the following sections first: ${notFinalized.join(", ")}'))
+          SnackBar(content: Text('The following sections have no data: ${sectionsWithoutData.join(", ")}'))
         );
         return;
       }
 
-      final iaBytes = await storage.ref().child('$_yearRange/I.A/document.docx').getData();
-      final ibBytes = await storage.ref().child('$_yearRange/I.B/document.docx').getData();
-      final icBytes = await storage.ref().child('$_yearRange/I.C/document.docx').getData();
-      final idBytes = await storage.ref().child('$_yearRange/I.D/document.docx').getData();
-      final ieBytes = await storage.ref().child('$_yearRange/I.E/document.docx').getData();
+      // Get DOCX files from storage
+      try {
+        final iaBytes = await storage.ref().child('$_yearRange/I.A/document.docx').getData();
+        final ibBytes = await storage.ref().child('$_yearRange/I.B/document.docx').getData();
+        final icBytes = await storage.ref().child('$_yearRange/I.C/document.docx').getData();
+        final idBytes = await storage.ref().child('$_yearRange/I.D/document.docx').getData();
+        final ieBytes = await storage.ref().child('$_yearRange/I.E/document.docx').getData();
 
-      if (iaBytes == null || ibBytes == null || icBytes == null || idBytes == null || ieBytes == null) {
+        if (iaBytes == null || ibBytes == null || icBytes == null || idBytes == null || ieBytes == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('One or more Part I documents are missing. Please ensure all parts are finalized.'))
+          );
+          return;
+        }
+
+        // Merge DOCX files using server endpoint
+        await _mergeDocxFiles(iaBytes, ibBytes, icBytes, idBytes, ieBytes);
+
+      } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('One or more Part I documents are missing. Please ensure all parts are finalized.'))
+          SnackBar(content: Text('Error accessing DOCX files from storage: $e'))
         );
-        return;
       }
 
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error merging documents: $e'))
+      );
+    } finally {
+      setState(() => _isCompiling = false);
+    }
+  }
+
+  Future<void> _mergeDocxFiles(Uint8List iaBytes, Uint8List ibBytes, Uint8List icBytes, Uint8List idBytes, Uint8List ieBytes) async {
+    try {
       // Create multipart request for merging
       var request = http.MultipartRequest(
         'POST',
@@ -341,10 +157,16 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
       // Get merged document
       final responseBytes = await response.stream.toBytes();
 
+      final storage = FirebaseStorage.instance;
       final mergedRef = storage.ref().child('$_yearRange/part_i_merged.docx');
       await mergedRef.putData(responseBytes);
 
-      await FirebaseFirestore.instance.collection('issp_documents').doc(_yearRange).update({
+      final docRef = FirebaseFirestore.instance.collection('issp_documents').doc(_yearRange);
+      final docSnap = await docRef.get();
+      if (!docSnap.exists) {
+        await docRef.set({}); // create an empty document if it doesn't exist
+      }
+      await docRef.update({
         'partIMergedPath': '$_yearRange/part_i_merged.docx',
         'lastModified': FieldValue.serverTimestamp(),
       });
@@ -365,11 +187,7 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
         const SnackBar(content: Text('Documents merged successfully'))
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error merging documents: $e'))
-      );
-    } finally {
-      setState(() => _isCompiling = false);
+      throw Exception('Error merging DOCX files: $e');
     }
   }
 
@@ -557,31 +375,4 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
       ),
     );
   }
-}
-
-Future<Map<String, dynamic>> pickTemplate() async {
-  FilePickerResult? result = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: ['docx'],
-    withData: true,
-  );
-
-  if (result != null) {
-    final file = result.files.single;
-    if (kIsWeb) {
-      if (file.bytes == null) throw Exception('No file bytes on web');
-      return {
-        'bytes': file.bytes,
-        'name': file.name,
-      };
-    } else {
-      if (file.path == null) throw Exception('No file path on mobile/desktop');
-      return {
-        'path': file.path,
-        'bytes': file.bytes,
-        'name': file.name,
-      };
-    }
-  }
-  throw Exception('No template selected');
 }

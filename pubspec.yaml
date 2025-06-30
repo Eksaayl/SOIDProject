@@ -90,6 +90,7 @@ flutter:
      - assets/III_b.docx
      - assets/III_c.docx
      - assets/IV_a.docx
+     - assets/IV_b.docx
      - assets/templates_IV_b.docx
      - assets/.env
 
