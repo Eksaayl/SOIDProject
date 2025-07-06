@@ -18,6 +18,7 @@ import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import '../../state/selection_model.dart';
+import '../../utils/dialog_utils.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -441,142 +442,8 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
 
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await showDialog<bool>(
+        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
           context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              backgroundColor: Colors.white,
-              elevation: 20,
-              title: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xff021e84), Color(0xff1e40af)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.warning_amber, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Save Before Leaving',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              content: Container(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff021e84).withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xff021e84).withOpacity(0.1),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: Color(0xff021e84),
-                            size: 20,
-                          ),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Make sure to save before leaving to avoid losing your work.',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Color(0xFF4A5568),
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(color: Colors.grey.shade300),
-                      ),
-                    ),
-                    child: const Text(
-                      'Stay',
-                      style: TextStyle(
-                        color: Color(0xFF4A5568),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xff021e84).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text(
-                      'Leave Anyway',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
         );
         return shouldPop ?? false;
       },
@@ -873,27 +740,55 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
           final ctrl = entry.value;
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: TextFormField(
-              controller: ctrl,
-              enabled: !_isFinalized,
-              maxLines: null,
-              decoration: InputDecoration(
-                labelText: 'Pillar ${idx + 1}',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: ctrl,
+                    enabled: !_isFinalized,
+                    maxLines: null,
+                    decoration: InputDecoration(
+                      labelText: 'Pillar ${idx + 1}',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xff021e84)),
+                      ),
+                      labelStyle: const TextStyle(color: Color(0xFF4A5568)),
+                    ),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Pillar ${idx + 1} is required' : null,
+                  ),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xff021e84)),
-                ),
-                labelStyle: const TextStyle(color: Color(0xFF4A5568)),
-              ),
-              validator: (v) => v == null || v.trim().isEmpty ? 'Pillar ${idx + 1} is required' : null,
+                if (!_isFinalized && pillarControllers.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8, top: 2),
+                    child: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      tooltip: 'Delete Pillar',
+                      onPressed: () async {
+                        final confirmed = await DialogUtils.showDeleteConfirmationDialog(
+                          context: context,
+                          title: 'Delete Pillar',
+                          message: 'Are you sure you want to delete Pillar ${idx + 1}? This action cannot be undone.',
+                          confirmText: 'Delete Pillar',
+                        );
+                        if (confirmed == true) {
+                          setState(() {
+                            pillarControllers.removeAt(idx);
+                          });
+                        }
+                      },
+                    ),
+                  ),
+              ],
             ),
           );
         }),

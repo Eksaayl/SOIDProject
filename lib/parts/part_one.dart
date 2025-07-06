@@ -99,7 +99,6 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
         return;
       }
 
-      // Get DOCX files from storage
       try {
         final iaBytes = await storage.ref().child('$_yearRange/I.A/document.docx').getData();
         final ibBytes = await storage.ref().child('$_yearRange/I.B/document.docx').getData();
@@ -114,7 +113,6 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
           return;
         }
 
-        // Merge DOCX files using server endpoint
         await _mergeDocxFiles(iaBytes, ibBytes, icBytes, idBytes, ieBytes);
 
       } catch (e) {
@@ -134,27 +132,23 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
 
   Future<void> _mergeDocxFiles(Uint8List iaBytes, Uint8List ibBytes, Uint8List icBytes, Uint8List idBytes, Uint8List ieBytes) async {
     try {
-      // Create multipart request for merging
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('${Config.serverUrl}/merge-documents-part-i-all'),
       );
 
-      // Add all documents
       request.files.add(http.MultipartFile.fromBytes('part_ia', iaBytes, filename: 'part_ia.docx'));
       request.files.add(http.MultipartFile.fromBytes('part_ib', ibBytes, filename: 'part_ib.docx'));
       request.files.add(http.MultipartFile.fromBytes('part_ic', icBytes, filename: 'part_ic.docx'));
       request.files.add(http.MultipartFile.fromBytes('part_id', idBytes, filename: 'part_id.docx'));
       request.files.add(http.MultipartFile.fromBytes('part_ie', ieBytes, filename: 'part_ie.docx'));
 
-      // Send merge request
       var response = await request.send();
       if (response.statusCode != 200) {
         final error = await response.stream.bytesToString();
         throw Exception('Failed to merge documents: ${response.statusCode} - $error');
       }
 
-      // Get merged document
       final responseBytes = await response.stream.toBytes();
 
       final storage = FirebaseStorage.instance;
@@ -164,7 +158,7 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
       final docRef = FirebaseFirestore.instance.collection('issp_documents').doc(_yearRange);
       final docSnap = await docRef.get();
       if (!docSnap.exists) {
-        await docRef.set({}); // create an empty document if it doesn't exist
+        await docRef.set({});
       }
       await docRef.update({
         'partIMergedPath': '$_yearRange/part_i_merged.docx',

@@ -7,38 +7,30 @@ import logging
 from typing import Dict, Any
 from docx import Document
 from docx.shared import Inches, Pt
-from docx.oxml import parse_xml
+from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# Set up logger
 logger = logging.getLogger(__name__)
 
 def replace_first_picture_content_control(doc, image_path):
     """
     Replace the first picture content control in the document with the given image.
     """
-    ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-    for sdt in doc.element.iterfind('.//%ssdt' % ns):
-        sdt_content = sdt.find(f'{ns}sdtContent')
+    for sdt in doc.element.findall('.//w:sdt', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
+        sdt_content = sdt.find('.//w:sdtContent', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'})
         if sdt_content is not None:
-            found_pic = False
-            for descendant in sdt_content.iter():
-                if descendant.tag in (f'{ns}drawing', f'{ns}pict'):
-                    found_pic = True
-                    break
-            if found_pic:
-                for child in list(sdt_content):
-                    sdt_content.remove(child)
-                from docx.text.paragraph import Paragraph
-                from docx.oxml import OxmlElement
-                p = OxmlElement('w:p')
-                r = OxmlElement('w:r')
-                p.append(r)
-                sdt_content.append(p)
-                para = Paragraph(p, doc)
-                run = para.add_run()
-                run.add_picture(image_path, width=Inches(6))
-                break
+            p = OxmlElement('w:p')
+            sdt_content.append(p)
+            r = OxmlElement('w:r')
+            p.append(r)
+            sdt_content.append(p)
+            para = Paragraph(p, doc)
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = para.add_run()
+            run.add_picture(image_path, width=Inches(6))
+            break
 
 def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
     """
@@ -113,6 +105,7 @@ def generate_part_ib_docx(data: Dict[str, Any], template_path: str) -> bytes:
                 for i, paragraph in enumerate(doc.paragraphs):
                     if '${organizationalStructure}' in paragraph.text:
                         paragraph.text = paragraph.text.replace('${organizationalStructure}', '')
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         run = paragraph.add_run()
                         run.add_picture(temp_img_path, width=Inches(8.29), height=Inches(5.27))
                         found = True

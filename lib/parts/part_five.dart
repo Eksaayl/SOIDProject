@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'part_v/part_v_a.dart';
+import 'part_v/part_v_b.dart';
 
 class Part5 extends StatefulWidget {
   const Part5({super.key});
@@ -89,6 +91,24 @@ class _Part5State extends State<Part5> {
         setState(() {
           _selectedIndex = index;
         });
+        
+        if (index == 0) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const PartVA(),
+            ),
+          );
+        } else if (index == 1) {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const PartVB()));
+        }
+        // Add navigation for other parts when they are created
+        // else if (index == 2) {
+        //   Navigator.push(context, MaterialPageRoute(builder: (context) => const PartVC()));
+        // }
+        // else if (index == 3) {
+        //   Navigator.push(context, MaterialPageRoute(builder: (context) => const PartVD()));
+        // }
       },
       icon: Icon(icon, color: _selectedIndex == index ? Colors.white : Colors.black),
       label: Text(

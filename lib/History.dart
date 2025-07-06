@@ -446,13 +446,11 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
         final iiiaProjects = iiiaData?['projects'] as List<dynamic>? ?? [];
         final iiibProjects = iiibData?['projects'] as List<dynamic>? ?? [];
         
-        // Collect sub-roles for each part separately
         final iiiaSubRoles = <String>{};
         final iiibSubRoles = <String>{};
         final iiiaSubmittedSubRoles = <String>{};
         final iiibSubmittedSubRoles = <String>{};
         
-        // Process III.A projects
         for (final project in iiiaProjects) {
           final subRoles = List<String>.from(project['sub_roles'] ?? []);
           iiiaSubRoles.addAll(subRoles);
@@ -461,7 +459,6 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
           }
         }
         
-        // Process III.B projects
         for (final project in iiibProjects) {
           final subRoles = List<String>.from(project['sub_roles'] ?? []);
           iiibSubRoles.addAll(subRoles);
@@ -473,7 +470,6 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
         final sortedIIIA = iiiaSubRoles.toList()..sort();
         final sortedIIIB = iiibSubRoles.toList()..sort();
         
-        // Overall statistics
         final totalSubRoles = (iiiaSubRoles.length + iiibSubRoles.length);
         final totalSubmitted = (iiiaSubmittedSubRoles.length + iiibSubmittedSubRoles.length);
         
@@ -482,7 +478,6 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -557,7 +552,6 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
               
               const SizedBox(height: 24),
               
-              // Part III.A Section
               if (sortedIIIA.isNotEmpty) ...[
                 _buildPartSection(
                   'Part III.A - Internal Systems Development Components',
@@ -569,7 +563,6 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
                 const SizedBox(height: 24),
               ],
               
-              // Part III.B Section
               if (sortedIIIB.isNotEmpty) ...[
                 _buildPartSection(
                   'Part III.B - Cross-Agency ICT Projects',
@@ -581,7 +574,6 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
                 const SizedBox(height: 24),
               ],
               
-              // Show empty state if no sub-roles found in either part
               if (sortedIIIA.isEmpty && sortedIIIB.isEmpty) ...[
                 Container(
                   padding: const EdgeInsets.all(32),
@@ -646,7 +638,6 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
       ),
       child: Column(
         children: [
-          // Section Header
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -702,7 +693,6 @@ class _PartIIIChecklistWidgetState extends State<_PartIIIChecklistWidget> {
               ],
             ),
           ),
-          // Sub-roles List
           ...subRoles.asMap().entries.map((entry) {
             final index = entry.key;
             final subRole = entry.value;

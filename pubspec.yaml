@@ -91,7 +91,10 @@ flutter:
      - assets/III_c.docx
      - assets/IV_a.docx
      - assets/IV_b.docx
-     - assets/templates_IV_b.docx
+     - assets/V_a.docx
+     - assets/V_b.docx
+     - assets/V_c.docx
+     - assets/V_d.docx
      - assets/.env
 
   # An image asset can refer to one or more resolution-specific "variants", see

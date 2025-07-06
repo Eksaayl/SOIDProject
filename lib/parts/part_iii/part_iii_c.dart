@@ -14,12 +14,15 @@ import 'package:http/http.dart' as http;
 import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
+import '../../utils/dialog_utils.dart';
 
 class LogframeProject {
   List<Map<String, TextEditingController>> intermediateRows;
   List<Map<String, TextEditingController>> immediateRows;
   List<Map<String, TextEditingController>> outputRows;
-  LogframeProject()
+  String? subRole;
+  
+  LogframeProject({this.subRole})
       : intermediateRows = [
           {'hierarchy': TextEditingController(), 'ovi': TextEditingController(), 'baseline': TextEditingController(), 'targets': TextEditingController(), 'methods': TextEditingController(), 'responsibility': TextEditingController()},
         ],
@@ -104,12 +107,10 @@ class _PartIIICState extends State<PartIIIC> {
           _fileName = data['fileName'] as String?;
         });
         
-        // Load multiple logframes from Firestore
         if (data['logframes'] is List) {
           for (final logframe in data['logframes']) {
-            final project = LogframeProject();
+            final project = LogframeProject(subRole: logframe['subRole'] as String?);
             
-            // Populate intermediateRows
             if (logframe['intermediate'] is List) {
               project.intermediateRows = (logframe['intermediate'] as List).map((row) => {
                 'hierarchy': TextEditingController(text: row['hierarchy']?.toString() ?? ''),
@@ -121,7 +122,6 @@ class _PartIIICState extends State<PartIIIC> {
               }).toList();
             }
             
-            // Populate immediateRows
             if (logframe['immediate'] is List) {
               project.immediateRows = (logframe['immediate'] as List).map((row) => {
                 'hierarchy': TextEditingController(text: row['hierarchy']?.toString() ?? ''),
@@ -133,7 +133,6 @@ class _PartIIICState extends State<PartIIIC> {
               }).toList();
             }
             
-            // Populate outputRows
             if (logframe['outputs'] is List) {
               project.outputRows = (logframe['outputs'] as List).map((row) => {
                 'hierarchy': TextEditingController(text: row['hierarchy']?.toString() ?? ''),
@@ -149,12 +148,10 @@ class _PartIIICState extends State<PartIIIC> {
           }
         }
         
-        // If no logframes found, add a blank one
         if (_projects.isEmpty) {
           _projects.add(LogframeProject());
         }
         
-        // Load DOCX if it exists
         try {
           final docxRef = _storage.ref().child('${_yearRange}/III.C/document.docx');
           final docxBytes = await docxRef.getData();
@@ -167,7 +164,6 @@ class _PartIIICState extends State<PartIIIC> {
           print('Error loading DOCX: $e');
         }
       } else {
-        // No data exists, add a blank project
         _projects.add(LogframeProject());
       }
     } catch (e) {
@@ -188,6 +184,20 @@ class _PartIIICState extends State<PartIIIC> {
         _userSubRoles = List<String>.from(userDoc.data()?['sub_roles'] ?? []);
       });
       await _checkUserHasProjectInAnySection();
+      _assignSubRoleToDefaultProject();
+    }
+  }
+
+  void _assignSubRoleToDefaultProject() {
+    if (_userRole == 'admin' || _userSubRoles.isEmpty) return;
+    
+    if (_projects.length == 1 && _projects[0].subRole == null) {
+      final availableSubRoles = _getAvailableSubRoles();
+      if (availableSubRoles.isNotEmpty) {
+        setState(() {
+          _projects[0].subRole = availableSubRoles.first;
+        });
+      }
     }
   }
 
@@ -214,18 +224,40 @@ class _PartIIICState extends State<PartIIIC> {
     });
   }
 
-  // Check if user can edit the logframe
   bool _canEditLogframe() {
     if (_userRole == 'admin') return true;
     if (_userSubRoles.isEmpty) return true;
     
-    // Users can edit Part III.C if they have projects in either III.A or III.B
     return _userHasProjectInAnySection;
   }
 
+  bool _canAddMoreProjects() {
+    if (_userRole == 'admin') return true;
+    
+    if (_userSubRoles.isEmpty) return _projects.length < 1;
+    
+    for (final userSubRole in _userSubRoles) {
+      final hasProjectForSubRole = _projects.any((project) => project.subRole == userSubRole);
+      if (!hasProjectForSubRole) return true;
+    }
+    
+    return false;
+  }
+
+  List<String> _getAvailableSubRoles() {
+    if (_userRole == 'admin') return _userSubRoles;
+    
+    final usedSubRoles = _projects.map((p) => p.subRole).where((role) => role != null).cast<String>().toSet();
+    return _userSubRoles.where((role) => !usedSubRoles.contains(role)).toList();
+  }
+
   Map<String, dynamic> _collectLogframeData() {
-    // Convert all projects to plain maps for saving
-    final logframes = _projects.map((project) => {
+    final projectsToSave = _userRole == 'admin' 
+      ? _projects 
+      : _projects.where((p) => p.subRole != null).toList();
+    
+    final logframes = projectsToSave.map((project) => {
+      'subRole': project.subRole,
       'intermediate': project.intermediateRows.map((c) => {
         'hierarchy': c['hierarchy']!.text,
         'ovi': c['ovi']!.text,
@@ -261,7 +293,6 @@ class _PartIIICState extends State<PartIIIC> {
     final formattedYearRange = formatYearRange(_yearRange);
     final url = Uri.parse('http://localhost:8000/generate-iiic-docx/');
     
-    // Debug: Log the data being sent
     print('Part III.C - Sending data to backend:');
     print('Year range: $formattedYearRange');
     print('Data: ${jsonEncode(logframeData)}');
@@ -358,37 +389,106 @@ class _PartIIICState extends State<PartIIIC> {
   }
 
   Widget _buildLogframeForm(bool isSmallScreen) {
-    return Column(
-      children: [
-        for (int i = 0; i < _projects.length; i++)
-          _buildLogframeFormForProject(_projects[i], i),
-        const SizedBox(height: 24),
-        Center(
-          child: ElevatedButton.icon(
-            onPressed: () {
+    if (_userRole == 'admin') {
+      return Column(
+        children: [
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            onReorder: (oldIndex, newIndex) {
               setState(() {
-                _projects.add(LogframeProject());
+                if (newIndex > oldIndex) newIndex -= 1;
+                final item = _projects.removeAt(oldIndex);
+                _projects.insert(newIndex, item);
               });
             },
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              'Add Project',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xff021e84),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+            children: [
+              for (int i = 0; i < _projects.length; i++)
+                Container(
+                  key: ValueKey('project_$i'),
+                  margin: const EdgeInsets.only(bottom: 32),
+                  child: _buildLogframeFormForProject(_projects[i], i),
+                ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: _canAddMoreProjects() ? () => _showAddProjectDialog() : null,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: Text(
+                _canAddMoreProjects() ? 'Add Project' : 'Project Limit Reached',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
-              elevation: 2,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _canAddMoreProjects() ? const Color(0xff021e84) : Colors.grey,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 2,
+              ),
             ),
           ),
+          const SizedBox(height: 16),
+        ],
+      );
+    } else {
+      return Column(
+        children: [
+          for (int i = 0; i < _projects.length; i++)
+            _buildLogframeFormForProject(_projects[i], i),
+          const SizedBox(height: 24),
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: _canAddMoreProjects() ? () => _showAddProjectDialog() : null,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: Text(
+                _canAddMoreProjects() ? 'Add Project' : 'Project Limit Reached',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _canAddMoreProjects() ? const Color(0xff021e84) : Colors.grey,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 2,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      );
+    }
+  }
+
+  Future<void> _showAddProjectDialog() async {
+    if (_userRole == 'admin') {
+        setState(() {
+        _projects.add(LogframeProject());
+      });
+      return;
+    }
+
+    final availableSubRoles = _getAvailableSubRoles();
+    
+    if (availableSubRoles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You have already added projects for all your sub-roles.'),
+          backgroundColor: Colors.orange,
         ),
-        const SizedBox(height: 16),
-      ],
-    );
+      );
+      return;
+    }
+
+    final selectedSubRole = availableSubRoles.first;
+    setState(() {
+      _projects.add(LogframeProject(subRole: selectedSubRole));
+    });
   }
 
   Future<void> _downloadDocx() async {
@@ -429,142 +529,8 @@ class _PartIIICState extends State<PartIIIC> {
     
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await showDialog<bool>(
+        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
           context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              backgroundColor: Colors.white,
-              elevation: 20,
-              title: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xff021e84), Color(0xff1e40af)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.warning_amber, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Save Before Leaving',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              content: Container(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff021e84).withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xff021e84).withOpacity(0.1),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: Color(0xff021e84),
-                            size: 20,
-                          ),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Make sure to save before leaving to avoid losing your work.',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Color(0xFF4A5568),
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(color: Colors.grey.shade300),
-                      ),
-                    ),
-                    child: const Text(
-                      'Stay',
-                      style: TextStyle(
-                        color: Color(0xFF4A5568),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xff021e84).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text(
-                      'Leave Anyway',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
         );
         return shouldPop ?? false;
       },
@@ -761,6 +727,7 @@ class _PartIIICState extends State<PartIIIC> {
       'Immediate Outcome',
       'Outputs',
     ];
+    final canEditProject = _userRole == 'admin' || project.subRole == null || _userSubRoles.contains(project.subRole);
     
     return Container(
       margin: const EdgeInsets.only(bottom: 32),
@@ -777,380 +744,433 @@ class _PartIIICState extends State<PartIIIC> {
         ],
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Table(
-        border: TableBorder.all(color: Colors.grey.shade300, width: 1),
-        defaultVerticalAlignment: TableCellVerticalAlignment.top,
+      child: Column(
         children: [
-          TableRow(
+          Container(
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Color(0xfff5f7fa),
+              color: const Color(0xff021e84).withOpacity(0.05),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(15),
+                topRight: Radius.circular(15),
+              ),
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade300),
+              ),
             ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Project ${index + 1}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Color(0xff021e84),
+                    ),
+                  ),
+                ),
+                if (!_isFinalized && index > 0 && canEditProject)
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    tooltip: 'Delete Project',
+                    onPressed: () async {
+                      final confirmed = await DialogUtils.showDeleteConfirmationDialog(
+                        context: context,
+                        title: 'Delete Project',
+                        message: 'This action will permanently delete this project and all its data. This cannot be undone.',
+                        confirmText: 'Delete Project',
+                      );
+                      
+                      if (confirmed == true) {
+                        setState(() {
+                          _projects.removeAt(index);
+                        });
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
+          Table(
+            border: TableBorder.all(color: Colors.grey.shade300, width: 1),
+            defaultVerticalAlignment: TableCellVerticalAlignment.top,
             children: [
-              Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
+              TableRow(
+                decoration: BoxDecoration(
+                  color: Color(0xfff5f7fa),
+                ),
+                children: [
+                  Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Hierarchy of targeted results',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xff021e84)),
+                        ),
+                        SizedBox(width: 4),
+                        Tooltip(
+                          message: 'Describe the result level (e.g., Intermediate Outcome, Immediate Outcome, Outputs).',
+                          child: Icon(Icons.info_outline, color: Color(0xff021e84), size: 18),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...fields.map((field) => Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Text(
+                          field['label'] ?? '',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xff021e84)),
+                        ),
+                        SizedBox(width: 4),
+                        Tooltip(
+                          message: field['tooltip'] ?? '',
+                          child: Icon(Icons.info_outline, color: Color(0xff021e84), size: 18),
+                        ),
+                      ],
+                    ),
+                  )),
+                ],
+              ),
+              ...List.generate(project.intermediateRows.length, (rowIdx) {
+                final controllers = project.intermediateRows[rowIdx];
+                return TableRow(
+                  decoration: BoxDecoration(
+                    color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
+                  ),
                   children: [
-                    Text(
-                      'Hierarchy of targeted results',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xff021e84)),
+                    Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            rowIdx == 0 ? 'Intermediate Outcome' : '',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Color(0xff021e84),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          TextFormField(
+                            controller: controllers['hierarchy'],
+                            enabled: !_isFinalized && canEditProject,
+                            minLines: 1,
+                            maxLines: null,
+                            decoration: const InputDecoration(
+                              border: UnderlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                              hintText: '',
+                            ),
+                          ),
+                          if (rowIdx > 0 && canEditProject)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: IconButton(
+                                icon: Icon(Icons.delete, color: Colors.red),
+                                tooltip: 'Remove row',
+                                onPressed: () {
+                                  setState(() {
+                                    project.intermediateRows.removeAt(rowIdx);
+                                  });
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    SizedBox(width: 4),
-                    Tooltip(
-                      message: 'Describe the result level (e.g., Intermediate Outcome, Immediate Outcome, Outputs).',
-                      child: Icon(Icons.info_outline, color: Color(0xff021e84), size: 18),
+                    ...fields.map((field) => Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 23),
+                          TextFormField(
+                            controller: controllers[field['key'] ?? ''],
+                            enabled: !_isFinalized && canEditProject,
+                            minLines: 1,
+                            maxLines: null,
+                            decoration: InputDecoration(
+                              border: UnderlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                  ],
+                );
+              }),
+              if (!_isFinalized && canEditProject)
+                TableRow(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Center(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              project.intermediateRows.add({
+                                'hierarchy': TextEditingController(),
+                                'ovi': TextEditingController(),
+                                'baseline': TextEditingController(),
+                                'targets': TextEditingController(),
+                                'methods': TextEditingController(),
+                                'responsibility': TextEditingController(),
+                              });
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(0xff021e84),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                            elevation: 0,
+                            textStyle: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          child: Text('Add Intermediate Outcome Row'),
+                        ),
+                      ),
                     ),
+                    for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
                   ],
                 ),
-              ),
-              ...fields.map((field) => Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
+              ...List.generate(project.immediateRows.length, (rowIdx) {
+                final controllers = project.immediateRows[rowIdx];
+                return TableRow(
+                  decoration: BoxDecoration(
+                    color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
+                  ),
                   children: [
-                    Text(
-                      field['label'] ?? '',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xff021e84)),
+                    Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            rowIdx == 0 ? 'Immediate Outcome' : '',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Color(0xff021e84),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          TextFormField(
+                            controller: controllers['hierarchy'],
+                            enabled: !_isFinalized && canEditProject,
+                            minLines: 1,
+                            maxLines: null,
+                            decoration: const InputDecoration(
+                              border: UnderlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                              hintText: '',
+                            ),
+                          ),
+                          if (rowIdx > 0 && canEditProject)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: IconButton(
+                                icon: Icon(Icons.delete, color: Colors.red),
+                                tooltip: 'Remove row',
+                                onPressed: () {
+                                  setState(() {
+                                    project.immediateRows.removeAt(rowIdx);
+                                  });
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    SizedBox(width: 4),
-                    Tooltip(
-                      message: field['tooltip'] ?? '',
-                      child: Icon(Icons.info_outline, color: Color(0xff021e84), size: 18),
+                    ...fields.map((field) => Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 23),
+                          TextFormField(
+                            controller: controllers[field['key'] ?? ''],
+                            enabled: !_isFinalized && canEditProject,
+                            minLines: 1,
+                            maxLines: null,
+                            decoration: InputDecoration(
+                              border: UnderlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                  ],
+                );
+              }),
+              if (!_isFinalized && canEditProject)
+                TableRow(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Center(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              project.immediateRows.add({
+                                'hierarchy': TextEditingController(),
+                                'ovi': TextEditingController(),
+                                'baseline': TextEditingController(),
+                                'targets': TextEditingController(),
+                                'methods': TextEditingController(),
+                                'responsibility': TextEditingController(),
+                              });
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(0xff021e84),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                            elevation: 0,
+                            textStyle: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          child: Text('Add Immediate Outcome Row'),
+                        ),
+                      ),
                     ),
+                    for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
                   ],
                 ),
-              )),
-            ],
-          ),
-          ...List.generate(project.intermediateRows.length, (rowIdx) {
-            final controllers = project.intermediateRows[rowIdx];
-            return TableRow(
-              decoration: BoxDecoration(
-                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
-              ),
-              children: [
-                Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        rowIdx == 0 ? 'Intermediate Outcome' : '',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Color(0xff021e84),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        controller: controllers['hierarchy'],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                          hintText: '',
-                        ),
-                      ),
-                      if (rowIdx > 0)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            tooltip: 'Remove row',
-                            onPressed: () {
-                              setState(() {
-                                project.intermediateRows.removeAt(rowIdx);
-                              });
-                            },
+              ...List.generate(project.outputRows.length, (rowIdx) {
+                final controllers = project.outputRows[rowIdx];
+                return TableRow(
+                  decoration: BoxDecoration(
+                    color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
+                  ),
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            rowIdx == 0 ? 'Outputs' : '',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Color(0xff021e84),
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                ),
-                ...fields.map((field) => Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 23),
-                      TextFormField(
-                        controller: controllers[field['key'] ?? ''],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
-              ],
-            );
-          }),
-          TableRow(
-            children: [
-              Padding(
-                padding: EdgeInsets.all(14),
-                child: Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        project.intermediateRows.add({
-                          'hierarchy': TextEditingController(),
-                          'ovi': TextEditingController(),
-                          'baseline': TextEditingController(),
-                          'targets': TextEditingController(),
-                          'methods': TextEditingController(),
-                          'responsibility': TextEditingController(),
-                        });
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xff021e84),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                      elevation: 0,
-                      textStyle: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        letterSpacing: 0.2,
+                          const SizedBox(height: 4),
+                          TextFormField(
+                            controller: controllers['hierarchy'],
+                            enabled: !_isFinalized && canEditProject,
+                            minLines: 1,
+                            maxLines: null,
+                            decoration: const InputDecoration(
+                              border: UnderlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                              hintText: '',
+                            ),
+                          ),
+                          if (rowIdx > 0 && canEditProject)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: IconButton(
+                                icon: Icon(Icons.delete, color: Colors.red),
+                                tooltip: 'Remove row',
+                                onPressed: () {
+                                  setState(() {
+                                    project.outputRows.removeAt(rowIdx);
+                                  });
+                                },
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    child: Text('Add Intermediate Outcome Row'),
-                  ),
-                ),
-              ),
-              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
-            ],
-          ),
-          ...List.generate(project.immediateRows.length, (rowIdx) {
-            final controllers = project.immediateRows[rowIdx];
-            return TableRow(
-              decoration: BoxDecoration(
-                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
-              ),
-              children: [
-                Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        rowIdx == 0 ? 'Immediate Outcome' : '',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Color(0xff021e84),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        controller: controllers['hierarchy'],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                          hintText: '',
-                        ),
-                      ),
-                      if (rowIdx > 0)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            tooltip: 'Remove row',
-                            onPressed: () {
-                              setState(() {
-                                project.immediateRows.removeAt(rowIdx);
-                              });
-                            },
+                    ...fields.map((field) => Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 23),
+                          TextFormField(
+                            controller: controllers[field['key'] ?? ''],
+                            enabled: !_isFinalized && canEditProject,
+                            minLines: 1,
+                            maxLines: null,
+                            decoration: InputDecoration(
+                              border: UnderlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                ),
-                ...fields.map((field) => Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 23),
-                      TextFormField(
-                        controller: controllers[field['key'] ?? ''],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                )),
-              ],
-            );
-          }),
-          TableRow(
-            children: [
-              Padding(
-                padding: EdgeInsets.all(14),
-                child: Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        project.immediateRows.add({
-                          'hierarchy': TextEditingController(),
-                          'ovi': TextEditingController(),
-                          'baseline': TextEditingController(),
-                          'targets': TextEditingController(),
-                          'methods': TextEditingController(),
-                          'responsibility': TextEditingController(),
-                        });
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xff021e84),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                      elevation: 0,
-                      textStyle: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        letterSpacing: 0.2,
+                    )),
+                  ],
+                );
+              }),
+              if (!_isFinalized && canEditProject)
+                TableRow(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Center(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              project.outputRows.add({
+                                'hierarchy': TextEditingController(),
+                                'ovi': TextEditingController(),
+                                'baseline': TextEditingController(),
+                                'targets': TextEditingController(),
+                                'methods': TextEditingController(),
+                                'responsibility': TextEditingController(),
+                              });
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(0xff021e84),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                            elevation: 0,
+                            textStyle: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          child: Text('Add Output Row'),
+                        ),
                       ),
                     ),
-                    child: Text('Add Immediate Outcome Row'),
-                  ),
+                    for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
+                  ],
                 ),
-              ),
-              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
-            ],
-          ),
-          ...List.generate(project.outputRows.length, (rowIdx) {
-            final controllers = project.outputRows[rowIdx];
-            return TableRow(
-              decoration: BoxDecoration(
-                color: rowIdx % 2 == 0 ? Colors.white : Color(0xfff7fafd),
-              ),
-              children: [
-                Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        rowIdx == 0 ? 'Outputs' : '',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Color(0xff021e84),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      TextFormField(
-                        controller: controllers['hierarchy'],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: const InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                          hintText: '',
-                        ),
-                      ),
-                      if (rowIdx > 0)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            tooltip: 'Remove row',
-                            onPressed: () {
-                              setState(() {
-                                project.outputRows.removeAt(rowIdx);
-                              });
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                ...fields.map((field) => Padding(
-                  padding: EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 23),
-                      TextFormField(
-                        controller: controllers[field['key'] ?? ''],
-                        enabled: !_isFinalized,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          border: UnderlineInputBorder(),
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
-              ],
-            );
-          }),
-          TableRow(
-            children: [
-              Padding(
-                padding: EdgeInsets.all(14),
-                child: Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        project.outputRows.add({
-                          'hierarchy': TextEditingController(),
-                          'ovi': TextEditingController(),
-                          'baseline': TextEditingController(),
-                          'targets': TextEditingController(),
-                          'methods': TextEditingController(),
-                          'responsibility': TextEditingController(),
-                        });
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xff021e84),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                      elevation: 0,
-                      textStyle: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    child: Text('Add Output Row'),
-                  ),
-                ),
-              ),
-              for (int i = 0; i < fields.length; i++) SizedBox.shrink(),
             ],
           ),
         ],

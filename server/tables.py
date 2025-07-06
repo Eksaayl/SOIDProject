@@ -289,7 +289,6 @@ def create_iiic_logframe_table(data, output_path, doc=None):
         if doc is None:
             doc = Document()
         
-        # Handle the data structure - data should be a single logframe
         intermediate_rows = data.get("intermediate", [])
         immediate_rows = data.get("immediate", [])
         outputs_rows = data.get("outputs", [])
@@ -359,7 +358,6 @@ def create_iiic_logframe_table(data, output_path, doc=None):
                                 cell.add_paragraph(line.strip())
                 row_idx += 1
 
-        # Only save if no existing document was passed
         if doc is None and output_path:
             doc.save(output_path)
     

@@ -1,202 +1,52 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:archive/archive.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:file_saver/file_saver.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:path_provider/path_provider.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'package:docx_template/docx_template.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:file_saver/file_saver.dart';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../config.dart';
-import 'package:test_project/main_part.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../main_part.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
 import '../../utils/dialog_utils.dart';
 
-String xmlEscape(String input) => input
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
-
-Future<Uint8List> generateDocxWithImages({
-  required Map<String, Uint8List> images,
-  required Map<String, String> replacements,
-}) async {
-  try {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('${Config.serverUrl}/generate-docx'),
-    );
-
-    final templateBytes = await rootBundle.load('assets/II_a.docx');
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'template',
-        templateBytes.buffer.asUint8List(),
-        filename: 'II_a.docx',
-      ),
-    );
-
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'images',
-        images['ISI']!,
-        filename: 'ISI.png',
-      ),
-    );
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'images',
-        images['ISII']!,
-        filename: 'ISII.png',
-      ),
-    );
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'images',
-        images['ISIII']!,
-        filename: 'ISIII.png',
-      ),
-    );
-
-    final response = await request.send();
-    if (response.statusCode != 200) {
-      throw Exception('Failed to generate DOCX: ${response.statusCode}');
-    }
-
-    final bytes = await response.stream.toBytes();
-    
-    final archive = ZipDecoder().decodeBytes(bytes);
-    
-    final headerFiles = archive.where((f) => f.name.contains('header') && f.name.endsWith('.xml')).toList();
-    for (final headerFile in headerFiles) {
-      var headerXml = utf8.decode(headerFile.content as List<int>);
-      
-      print('Processing header file: ${headerFile.name}');
-      
-      final complexPattern = RegExp(
-        r'\$\{</w:t></w:r>.*?<w:t>yearRange</w:t>.*?<w:t>\}',
-        dotAll: true,
-      );
-      
-      final beforeReplacement = headerXml;
-      headerXml = headerXml.replaceAllMapped(complexPattern, (match) {
-        print('✓ Matched complex yearRange placeholder in ${headerFile.name}!');
-        final yearRange = replacements['yearRange'] ?? '';
-        return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$yearRange</w:t></w:r>''';
-      });
-      
-      final simplePattern = RegExp(r'\$\{yearRange\}');
-      headerXml = headerXml.replaceAllMapped(simplePattern, (match) {
-        print('✓ Matched simple yearRange placeholder in ${headerFile.name}!');
-        final yearRange = replacements['yearRange'] ?? '';
-        return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$yearRange</w:t></w:r>''';
-      });
-      
-      if (beforeReplacement != headerXml) {
-        print('✓ Header replacement successful for ${headerFile.name}');
-      } else {
-        print('✗ No yearRange placeholders found in ${headerFile.name}');
-      }
-      
-      archive.addFile(ArchiveFile(headerFile.name, utf8.encode(headerXml).length, utf8.encode(headerXml)));
-    }
-
-    final footerFiles = archive.where((f) => f.name.contains('footer') && f.name.endsWith('.xml')).toList();
-    for (final footerFile in footerFiles) {
-      var footerXml = utf8.decode(footerFile.content as List<int>);
-      
-      print('Processing footer file: ${footerFile.name}');
-      
-      final complexPattern = RegExp(
-        r'\$\{</w:t></w:r>.*?<w:t>yearRange</w:t>.*?<w:t>\}',
-        dotAll: true,
-      );
-      
-      final beforeReplacement = footerXml;
-      footerXml = footerXml.replaceAllMapped(complexPattern, (match) {
-        print('✓ Matched complex yearRange placeholder in ${footerFile.name}!');
-        final yearRange = replacements['yearRange'] ?? '';
-        return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$yearRange</w:t></w:r>''';
-      });
-      
-      final simplePattern = RegExp(r'\$\{yearRange\}');
-      footerXml = footerXml.replaceAllMapped(simplePattern, (match) {
-        print('✓ Matched simple yearRange placeholder in ${footerFile.name}!');
-        final yearRange = replacements['yearRange'] ?? '';
-        return '''<w:r><w:rPr><w:rFonts w:ascii="Palatino Linotype" w:hAnsi="Palatino Linotype"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/><w:color w:val="000000"/></w:rPr><w:t>$yearRange</w:t></w:r>''';
-      });
-      
-      if (beforeReplacement != footerXml) {
-        print('✓ Footer replacement successful for ${footerFile.name}');
-      } else {
-        print('✗ No yearRange placeholders found in ${footerFile.name}');
-      }
-      
-      archive.addFile(ArchiveFile(footerFile.name, utf8.encode(footerXml).length, utf8.encode(footerXml)));
-    }
-
-    final out = ZipEncoder().encode(archive)!;
-    return Uint8List.fromList(out);
-    
-  } catch (e) {
-    print('Error generating DOCX: $e');
-    rethrow;
-  }
-}
-
-class PartIIA extends StatefulWidget {
+class PartVA extends StatefulWidget {
   final String documentId;
-  
-  const PartIIA({
-    Key? key,
-    required this.documentId,
-  }) : super(key: key);
+  const PartVA({Key? key, this.documentId = 'document'}) : super(key: key);
 
   @override
-  _PartIIAState createState() => _PartIIAState();
+  State<PartVA> createState() => _PartVAState();
 }
 
-class _PartIIAState extends State<PartIIA> {
+class _PartVAState extends State<PartVA> {
   final _formKey = GlobalKey<FormState>();
-  Uint8List? _isiBytes;
-  Uint8List? _isiiBytes;
-  Uint8List? _isiiiBytes;
+  Uint8List? _ipisBytes;
   bool _loading = true;
   bool _saving = false;
   bool _compiling = false;
   bool _isFinalized = false;
-
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
   final _storage = FirebaseStorage.instance;
-  String get _yearRange {
-    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
-    print('Getting yearRange (Part II.A): $yearRange');
-    return yearRange;
-  }
 
   @override
   void initState() {
     super.initState();
-    print('initState (Part II.A) - yearRange: $_yearRange');
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(_yearRange)
         .collection('sections')
-        .doc('II.A');
-
+        .doc('V.A');
     _loadContent();
   }
 
@@ -210,31 +60,15 @@ class _PartIIAState extends State<PartIIA> {
         });
 
         try {
-          final isiRef = _storage.ref().child('$_yearRange/II.A/isi.png');
-          final isiiRef = _storage.ref().child('$_yearRange/II.A/isii.png');
-          final isiiiRef = _storage.ref().child('$_yearRange/II.A/isiii.png');
-          
-          final isiBytes = await isiRef.getData();
-          final isiiBytes = await isiiRef.getData();
-          final isiiiBytes = await isiiiRef.getData();
-          
-          if (isiBytes != null) {
+          final ipisRef = _storage.ref().child('$_yearRange/V.A/ipis.png');
+          final ipisBytes = await ipisRef.getData();
+          if (ipisBytes != null) {
             setState(() {
-              _isiBytes = isiBytes;
-            });
-          }
-          if (isiiBytes != null) {
-            setState(() {
-              _isiiBytes = isiiBytes;
-            });
-          }
-          if (isiiiBytes != null) {
-            setState(() {
-              _isiiiBytes = isiiiBytes;
+              _ipisBytes = ipisBytes;
             });
           }
         } catch (e) {
-          print('Error loading images: $e');
+          print('Error loading ICT Projects Implementation Schedule image: $e');
         }
       }
     } catch (e) {
@@ -246,7 +80,7 @@ class _PartIIAState extends State<PartIIA> {
     }
   }
 
-  Future<void> _pickImage(String type) async {
+  Future<void> _pickImage() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
@@ -256,22 +90,16 @@ class _PartIIAState extends State<PartIIA> {
       if (result != null) {
         final bytes = result.files.first.bytes;
         if (bytes != null) {
-          final imageRef = _storage.ref().child('$_yearRange/II.A/${type.toLowerCase()}.png');
+          final imageRef = _storage.ref().child('$_yearRange/V.A/ipis.png');
           await imageRef.putData(bytes);
           
           setState(() {
-            switch (type) {
-              case 'ISI':
-                _isiBytes = bytes;
-                break;
-              case 'ISII':
-                _isiiBytes = bytes;
-                break;
-              case 'ISIII':
-                _isiiiBytes = bytes;
-                break;
-            }
+            _ipisBytes = bytes;
           });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ICT Projects Implementation Schedule image uploaded successfully'))
+          );
         }
       }
     } catch (e) {
@@ -281,27 +109,24 @@ class _PartIIAState extends State<PartIIA> {
     }
   }
 
-  Future<void> _downloadImage(String type) async {
-    final bytes = type == 'ISI' ? _isiBytes : 
-                 type == 'ISII' ? _isiiBytes : 
-                 _isiiiBytes;
-    if (bytes == null) return;
+  Future<void> _downloadImage() async {
+    if (_ipisBytes == null) return;
 
     try {
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: 'Part_II_A_${type}_$_yearRange.png',
-          bytes: bytes,
+          name: 'Part_V_A_$_yearRange.png',
+          bytes: _ipisBytes!,
           mimeType: MimeType.png,
         );
       } else {
         final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/Part_II_A_${type}_$_yearRange.png');
-        await file.writeAsBytes(bytes);
+        final file = File('${directory.path}/Part_V_A_$_yearRange.png');
+        await file.writeAsBytes(_ipisBytes!);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Image downloaded successfully'))
+        const SnackBar(content: Text('ICT Projects Implementation Schedule image downloaded successfully'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -310,21 +135,99 @@ class _PartIIAState extends State<PartIIA> {
     }
   }
 
+  Future<String?> _generateAndUploadDocx() async {
+    try {
+      if (_ipisBytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please upload an ICT Projects Implementation Schedule image first')),
+        );
+        return null;
+      }
+
+      final url = Uri.parse('http://localhost:8000/generate-va-docx/');
+      final request = http.MultipartRequest('POST', url);
+      
+      request.files.add(http.MultipartFile.fromBytes(
+        'ipis_image',
+        _ipisBytes!,
+        filename: 'ipis.png',
+      ));
+      
+      request.fields['yearRange'] = formatYearRange(_yearRange);
+
+      final response = await request.send();
+      if (response.statusCode == 200) {
+        final bytes = await response.stream.toBytes();
+        final fileName = 'document.docx';
+        
+        try {
+          final storageRef = FirebaseStorage.instance
+              .ref()
+              .child(_yearRange)
+              .child('V.A')
+              .child(fileName);
+          
+          final metadata = SettableMetadata(
+            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            customMetadata: {
+              'uploadedBy': _userId,
+              'documentId': _yearRange,
+              'section': 'V.A',
+            },
+          );
+
+          if (kIsWeb) {
+            await storageRef.putData(bytes, metadata);
+          } else {
+            final directory = await getApplicationDocumentsDirectory();
+            final file = File('${directory.path}/$fileName');
+            await file.writeAsBytes(bytes);
+            await storageRef.putFile(file, metadata);
+          }
+          
+          return await storageRef.getDownloadURL();
+        } catch (storageError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error uploading to storage: $storageError')),
+          );
+          return null;
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate DOCX: ${response.statusCode}')),
+        );
+      }
+      return null;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+      return null;
+    }
+  }
+
   Future<void> _save({bool finalize = false}) async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_ipisBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please upload an ICT Projects Implementation Schedule image first'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
 
     try {
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
-      final formattedYearRange = formatYearRange(_yearRange);
       final payload = {
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
         'screening': finalize || _isFinalized,
-        'sectionTitle': 'Part II.A',
+        'sectionTitle': 'Part V.A',
         'isFinalized': finalize ? false : _isFinalized,
-        'yearRange': formattedYearRange,
       };
 
       if (!_isFinalized) {
@@ -335,38 +238,16 @@ class _PartIIAState extends State<PartIIA> {
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
 
-      if (_isiBytes != null && _isiiBytes != null && _isiiiBytes != null) {
-        try {
-          final bytes = await generateDocxWithImages(
-            images: {
-              'ISI': _isiBytes!,
-              'ISII': _isiiBytes!,
-              'ISIII': _isiiiBytes!,
-            },
-            replacements: {
-              'yearRange': formattedYearRange,
-            },
-          );
-          final docxRef = _storage.ref().child('$_yearRange/II.A/document.docx');
-          await docxRef.putData(bytes, SettableMetadata(contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
-          final docxUrl = await docxRef.getDownloadURL();
-          await _sectionRef.set({'docxUrl': docxUrl}, SetOptions(merge: true));
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error generating/uploading DOCX: ' + e.toString())),
-          );
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('DOCX not generated: Please upload all three images (ISI, ISII, ISIII)')),
-        );
+      final docxUrl = await _generateAndUploadDocx();
+      if (docxUrl != null) {
+        await _sectionRef.set({'docxUrl': docxUrl}, SetOptions(merge: true));
       }
 
       if (finalize) {
-        await createSubmissionNotification('Part II.A', _yearRange);
+        await createSubmissionNotification('Part V.A', _yearRange);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Part II.A submitted for admin approval. You will be notified once it is reviewed.'),
+            content: Text('Part V.A submitted for admin approval. You will be notified once it is reviewed.'),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 4),
           )
@@ -374,7 +255,7 @@ class _PartIIAState extends State<PartIIA> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Part II.A saved successfully (not finalized)'),
+            content: Text('Part V.A saved successfully (not finalized)'),
             backgroundColor: Colors.green,
           )
         );
@@ -397,7 +278,7 @@ class _PartIIAState extends State<PartIIA> {
     try {
       final fileName = 'document.docx';
       final storage = FirebaseStorage.instance;
-      final docxRef = storage.ref().child('$_yearRange/II.A/document.docx');
+      final docxRef = storage.ref().child('$_yearRange/V.A/document.docx');
       final docxBytes = await docxRef.getData();
       if (docxBytes != null) {
         if (kIsWeb) {
@@ -428,11 +309,24 @@ class _PartIIAState extends State<PartIIA> {
     }
   }
 
-  Widget _buildImageUploadSection(String type) {
-    final bytes = type == 'ISI' ? _isiBytes : 
-                 type == 'ISII' ? _isiiBytes : 
-                 _isiiiBytes;
+  Future<void> _openGoogleSheets() async {
+    const url = 'https://docs.google.com/spreadsheets/d/1QfWrNCEUgdQi_4uh6g6Ag4XB-lU6nI4Gr8GMSA7Lcfc/edit?usp=sharing'; 
+    try {
+      if (await canLaunchUrl(Uri.parse(url))) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open Google Sheets')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error opening Google Sheets: $e')),
+      );
+    }
+  }
 
+  Widget _buildImageUploadSection() {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 10),
       padding: const EdgeInsets.all(20),
@@ -466,9 +360,9 @@ class _PartIIAState extends State<PartIIA> {
                 ),
               ),
               const SizedBox(width: 12),
-              Text(
-                type,
-                style: const TextStyle(
+              const Text(
+                'ICT Projects Implementation Schedule Image',
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF2D3748),
@@ -477,7 +371,7 @@ class _PartIIAState extends State<PartIIA> {
             ],
           ),
           const SizedBox(height: 20),
-          if (bytes != null)
+          if (_ipisBytes != null)
             Center(
               child: Container(
                 height: 250,
@@ -496,7 +390,7 @@ class _PartIIAState extends State<PartIIA> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.memory(
-                    bytes,
+                    _ipisBytes!,
                     fit: BoxFit.contain,
                   ),
                 ),
@@ -505,7 +399,7 @@ class _PartIIAState extends State<PartIIA> {
           else if (!_isFinalized)
             Center(
               child: ElevatedButton.icon(
-                onPressed: () => _pickImage(type),
+                onPressed: _pickImage,
                 icon: const Icon(
                   Icons.upload_file,
                   color: Colors.white,
@@ -531,12 +425,12 @@ class _PartIIAState extends State<PartIIA> {
                 ),
               ),
             ),
-          if (bytes != null && !_isFinalized)
+          if (_ipisBytes != null && !_isFinalized)
             const SizedBox(height: 20),
-          if (bytes != null && !_isFinalized)
+          if (_ipisBytes != null && !_isFinalized)
             Center(
               child: ElevatedButton.icon(
-                onPressed: () => _pickImage(type),
+                onPressed: _pickImage,
                 icon: const Icon(
                   Icons.edit,
                   color: Colors.white,
@@ -588,7 +482,7 @@ class _PartIIAState extends State<PartIIA> {
         backgroundColor: const Color(0xFFF7FAFC),
         appBar: AppBar(
           title: const Text(
-            'Part II.A - Conceptual Framework for Information Systems (Diagram of IS Interface)',
+            'Part V.A - ICT Projects Implementation Schedule Image Upload',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 20,
@@ -620,9 +514,10 @@ class _PartIIAState extends State<PartIIA> {
                 onPressed: _isFinalized ? null : () async {
                   final confirmed = await showFinalizeConfirmation(
                     context,
-                    'Part II.A - Information Security Policy'
+                    'Part V.A - ICT Projects Implementation Schedule Image Upload'
                   );
                   if (confirmed) {
+                    setState(() => _isFinalized = true);
                     _save(finalize: true);
                   }
                 },
@@ -646,7 +541,7 @@ class _PartIIAState extends State<PartIIA> {
                     Icon(Icons.lock, size: 48, color: Colors.grey),
                     SizedBox(height: 12),
                     Text(
-                      'Part II.A - Conceptual Framework for Information Systems (Diagram of IS Interface) has been finalized.',
+                      'Part V.A - ICT Projects Implementation Schedule Image Upload has been finalized.',
                       style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
                   ],
@@ -703,22 +598,37 @@ class _PartIIAState extends State<PartIIA> {
                               ),
                               const SizedBox(height: 16),
                               const Text(
-                                'Please upload three images for Part IIA: ISI, ISII, and ISIII. The images should be in PNG format. You can preview, save, and download the images. Click the document icon in the app bar to generate a DOCX file with all three images.',
+                                'Please upload an ICT Projects Implementation Schedule image for Part V.A. The image will be inserted into the generated DOCX document using the placeholder "{IPIS}". Make sure the image is clear and properly formatted before finalizing. Click the document icon in the app bar to generate a DOCX file with the image.',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Color(0xFF4A5568),
                                   height: 1.5,
                                 ),
                               ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: _openGoogleSheets,
+                                    icon: const Icon(Icons.table_chart),
+                                    label: const Text('Open Google Sheets'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Color(0xff021e84),
+                                      foregroundColor: Colors.white,
+                                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                      textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
                         const SizedBox(height: 24),
-                        _buildImageUploadSection('ISI'),
-                        const SizedBox(height: 24),
-                        _buildImageUploadSection('ISII'),
-                        const SizedBox(height: 24),
-                        _buildImageUploadSection('ISIII'),
+                        _buildImageUploadSection(),
                         const SizedBox(height: 32),
                       ],
                     ),
@@ -728,4 +638,4 @@ class _PartIIAState extends State<PartIIA> {
       ),
     );
   }
-} 
+}

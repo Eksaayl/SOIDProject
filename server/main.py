@@ -18,6 +18,7 @@ import argparse
 import mammoth
 from server.part_ib_handler import generate_part_ib_docx, process_part_ib_data
 from datetime import datetime
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -123,6 +124,7 @@ async def generate_docx_II_a(template_file, images):
                     img_content = await image_map['ISI'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = paragraph.add_run()
                     run.add_picture(img_stream, width=Inches(8.52), height=Inches(5.69))
             elif '{ISII}' in paragraph.text:
@@ -130,6 +132,7 @@ async def generate_docx_II_a(template_file, images):
                     img_content = await image_map['ISII'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = paragraph.add_run()
                     run.add_picture(img_stream, width=Inches(8.52), height=Inches(5.69))
             elif '{ISIII}' in paragraph.text:
@@ -137,6 +140,7 @@ async def generate_docx_II_a(template_file, images):
                     img_content = await image_map['ISIII'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = paragraph.add_run()
                     run.add_picture(img_stream, width=Inches(8.52), height=Inches(5.69))
         
@@ -169,6 +173,7 @@ async def generate_docx_II_d(template_file, images):
                     img_content = await image_map['NLC'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = paragraph.add_run()
                     run.add_picture(img_stream, width=Inches(6))
             elif '{PNL}' in paragraph.text:
@@ -176,6 +181,7 @@ async def generate_docx_II_d(template_file, images):
                     img_content = await image_map['PNL'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = paragraph.add_run()
                     run.add_picture(img_stream, width=Inches(6))
         
@@ -211,6 +217,7 @@ async def generate_docx_IV_b(template_file, images):
                     img_content = await image_map['Existing'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = paragraph.add_run()
                     run.add_picture(img_stream, width=Inches(6))
             elif '{Proposed}' in paragraph.text:
@@ -218,6 +225,7 @@ async def generate_docx_IV_b(template_file, images):
                     img_content = await image_map['Proposed'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = paragraph.add_run()
                     run.add_picture(img_stream, width=Inches(6))
             elif '{Placement}' in paragraph.text:
@@ -225,6 +233,7 @@ async def generate_docx_IV_b(template_file, images):
                     img_content = await image_map['Placement'].read()
                     img_stream = io.BytesIO(img_content)
                     paragraph.clear()
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run = paragraph.add_run()
                     run.add_picture(img_stream, width=Inches(6))
         
@@ -247,7 +256,6 @@ async def generate_docx(
         if not template.filename:
             raise HTTPException(status_code=400, detail="Template filename is required")
         
-        # Get yearRange from headers
         year_range = request.headers.get('yearrange', '') if request else ''
         logger.debug(f"[GENERATE DOCX] Received yearRange: '{year_range}'")
         
@@ -275,7 +283,6 @@ async def generate_docx(
             elif "IV_b.docx" in template.filename:
                 if len(images) != 3:
                     raise HTTPException(status_code=400, detail="Part IV.B requires exactly 3 images")
-                # Apply yearRange replacements for IV.B if provided
                 if year_range:
                     temp_template_with_year = f"temp_iv_b_with_year_{timestamp}.docx"
                     template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'IV_b.docx')
@@ -869,26 +876,20 @@ async def generate_iiic_docx_endpoint(request: Request):
         doc = Document(template_path)
         logger.debug(f"[IIIC DOCX] Document loaded successfully")
         
-        # Handle the data structure from frontend
         logframes = data.get('logframes', [])
         if not logframes:
-            # Fallback for single logframe structure
             logframes = [data]
         
         logger.debug(f"[IIIC DOCX] Processing {len(logframes)} logframes")
         
-        # Process each logframe
         for i, logframe in enumerate(logframes):
             logger.debug(f"[IIIC DOCX] Processing logframe {i+1}: {logframe}")
             if i > 0:
-                # Add spacing between multiple logframes
                 doc.add_paragraph()
                 doc.add_paragraph()
             
-            # Create the logframe table for this project (don't pass output_path when using existing doc)
             create_iiic_logframe_table(logframe, None, doc=doc)
         
-        # Save the final document
         doc.save(output_path)
         logger.debug(f"[IIIC DOCX] Document saved to: {output_path}")
         
@@ -905,6 +906,138 @@ async def generate_iiic_docx_endpoint(request: Request):
         raise
     except Exception as e:
         logger.error(f"Unexpected error in generate_iiic_docx_endpoint: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.post("/generate-va-docx/")
+async def generate_va_docx_endpoint(request: Request):
+    try:
+        form_data = await request.form()
+        ipis_image = form_data.get('ipis_image')
+        year_range = form_data.get('yearRange', '')
+        
+        logger.debug(f"[VA DOCX] Received yearRange: '{year_range}'")
+        
+        if not ipis_image:
+            raise HTTPException(status_code=400, detail="IPIS image is required")
+        
+        import tempfile, uuid, os
+        temp_dir = tempfile.gettempdir()
+        filename = f"va_{uuid.uuid4().hex}.docx"
+        output_path = os.path.join(temp_dir, filename)
+        
+        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'V_a.docx')
+        
+        logger.debug(f"[VA DOCX] Template path: {template_path}")
+        if not os.path.exists(template_path):
+            error_msg = f"Template file not found at {template_path}"
+            logger.error(error_msg)
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        if year_range:
+            temp_template_path = os.path.join(temp_dir, f"temp_va_template_{uuid.uuid4().hex}.docx")
+            replacements = {"${yearRange}": year_range}
+            fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
+            template_path = temp_template_path
+            logger.debug(f"[VA DOCX] Using temp template: {template_path}")
+        
+        doc = Document(template_path)
+        logger.debug(f"[VA DOCX] Document loaded successfully")
+        
+        ipis_content = await ipis_image.read()
+        ipis_stream = io.BytesIO(ipis_content)
+        
+        for paragraph in doc.paragraphs:
+            if '{IPIS}' in paragraph.text:
+                paragraph.clear()
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = paragraph.add_run()
+                run.add_picture(ipis_stream, width=Inches(8.52), height=Inches(5.69))
+                logger.debug(f"[VA DOCX] IPIS image inserted successfully")
+                break
+        
+        doc.save(output_path)
+        logger.debug(f"[VA DOCX] Document saved to: {output_path}")
+        
+        if year_range and os.path.exists(temp_template_path):
+            try:
+                os.remove(temp_template_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove temporary template file: {e}")
+        
+        from fastapi.responses import FileResponse
+        return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in generate_va_docx_endpoint: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.post("/generate-vb-docx/")
+async def generate_vb_docx_endpoint(request: Request):
+    try:
+        form_data = await request.form()
+        isis_image = form_data.get('isis_image')
+        year_range = form_data.get('yearRange', '')
+        
+        logger.debug(f"[VB DOCX] Received yearRange: '{year_range}'")
+        
+        if not isis_image:
+            raise HTTPException(status_code=400, detail="ISIS image is required")
+        
+        import tempfile, uuid, os
+        temp_dir = tempfile.gettempdir()
+        filename = f"vb_{uuid.uuid4().hex}.docx"
+        output_path = os.path.join(temp_dir, filename)
+        
+        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'V_b.docx')
+        
+        logger.debug(f"[VB DOCX] Template path: {template_path}")
+        if not os.path.exists(template_path):
+            error_msg = f"Template file not found at {template_path}"
+            logger.error(error_msg)
+            raise HTTPException(status_code=404, detail=error_msg)
+        
+        if year_range:
+            temp_template_path = os.path.join(temp_dir, f"temp_vb_template_{uuid.uuid4().hex}.docx")
+            replacements = {"${yearRange}": year_range}
+            fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
+            template_path = temp_template_path
+            logger.debug(f"[VB DOCX] Using temp template: {template_path}")
+        
+        doc = Document(template_path)
+        logger.debug(f"[VB DOCX] Document loaded successfully")
+        
+        isis_content = await isis_image.read()
+        isis_stream = io.BytesIO(isis_content)
+        
+        for paragraph in doc.paragraphs:
+            if '{ISIS}' in paragraph.text:
+                paragraph.clear()
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = paragraph.add_run()
+                run.add_picture(isis_stream, width=Inches(8.52), height=Inches(5.69))
+                logger.debug(f"[VB DOCX] ISIS image inserted successfully")
+                break
+        
+        doc.save(output_path)
+        logger.debug(f"[VB DOCX] Document saved to: {output_path}")
+        
+        if year_range and os.path.exists(temp_template_path):
+            try:
+                os.remove(temp_template_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove temporary template file: {e}")
+        
+        from fastapi.responses import FileResponse
+        return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in generate_vb_docx_endpoint: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'part_iii/part_iii_a.dart';
 import 'part_iii/part_iii_b.dart';
 import 'part_iii/part_iii_c.dart';
@@ -13,6 +14,11 @@ import '../config.dart';
 import '../state/selection_model.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import '../main_part.dart';
+import '../utils/user_utils.dart';
+import '../services/notification_service.dart';
+import '../utils/dialog_utils.dart';
 
 class Part3 extends StatefulWidget {
   const Part3({super.key});
@@ -31,11 +37,13 @@ class _Part3State extends State<Part3> {
   bool _isLoading = true;
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
   String _userRole = '';
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _checkExistingData();
+    _startAutoRefresh();
   }
 
   @override
@@ -106,7 +114,7 @@ class _Part3State extends State<Part3> {
           _selectedProjectType = 'cross-agency';
           _showProjectTypeSelection = false;
         });
-      } else if (_hasIIIAForSubRole && _hasIIIBForSubRole) {
+      } else if (_hasIIIAForSubRole && _hasIIIBForSubRole && userRole != 'admin') {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Both Part III.A and III.B have data for your sub-role. Please choose which one to work with.'),
@@ -248,24 +256,34 @@ class _Part3State extends State<Part3> {
 
   Future<void> _showDeleteConfirmation() async {
     final part = _selectedProjectType == 'internal' ? 'III.A' : 'III.B';
-    final confirmed = await showDialog<bool>(
+    
+    final user = await FirebaseAuth.instance.currentUser;
+    String message;
+    String title;
+    
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final userRole = userDoc.data()?['role'] ?? '';
+      
+      if (userRole == 'admin') {
+        title = 'Delete Part $part';
+        message = 'Are you sure you want to delete all data for Part $part? This action cannot be undone.';
+      } else {
+        title = 'Delete Your Projects in Part $part';
+        message = 'Are you sure you want to delete only your projects in Part $part? Other users\' projects will remain untouched.';
+      }
+    } else {
+      title = 'Delete Part $part';
+      message = 'Are you sure you want to delete all data for Part $part? This action cannot be undone.';
+    }
+    
+    final confirmed = await DialogUtils.showDeleteConfirmationDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete Part $part?'),
-        content: Text('Are you sure you want to delete all data for Part $part? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: title,
+      message: message,
+      confirmText: 'Delete',
     );
+    
     if (confirmed == true) {
       await _deletePart();
     }
@@ -275,13 +293,72 @@ class _Part3State extends State<Part3> {
     final part = _selectedProjectType == 'internal' ? 'III.A' : 'III.B';
     final firestore = FirebaseFirestore.instance;
     final yearRange = _yearRange;
+    
     try {
-      await firestore
+      final user = await FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User not logged in.')),
+        );
+        return;
+      }
+      
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final userSubRoles = List<String>.from(userDoc.data()?['sub_roles'] ?? []);
+      final userRole = userDoc.data()?['role'] ?? '';
+      
+      final sectionDoc = await firestore
           .collection('issp_documents')
           .doc(yearRange)
           .collection('sections')
           .doc(part)
-          .delete();
+          .get();
+      
+      if (!sectionDoc.exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Part $part does not exist.')),
+        );
+        return;
+      }
+      
+      final data = sectionDoc.data()!;
+      final projects = List<Map<String, dynamic>>.from(data['projects'] ?? []);
+      
+      if (userRole == 'admin') {
+        await firestore
+            .collection('issp_documents')
+            .doc(yearRange)
+            .collection('sections')
+            .doc(part)
+            .delete();
+      } else {
+        final projectsToKeep = projects.where((project) {
+          final savedSubRoles = List<String>.from(project['sub_roles'] ?? []);
+          return !savedSubRoles.any((role) => userSubRoles.contains(role));
+        }).toList();
+        
+        if (projectsToKeep.length == projects.length) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No projects found that belong to your sub-role.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+        
+        await firestore
+            .collection('issp_documents')
+            .doc(yearRange)
+            .collection('sections')
+            .doc(part)
+            .update({
+          'projects': projectsToKeep,
+          'modifiedBy': user.displayName ?? user.email ?? user.uid,
+          'lastModified': FieldValue.serverTimestamp(),
+        });
+      }
+      
       setState(() {
         if (part == 'III.A') {
           _hasIIIAForSubRole = false;
@@ -291,8 +368,13 @@ class _Part3State extends State<Part3> {
         _showProjectTypeSelection = true;
         _selectedProjectType = null;
       });
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Part $part deleted successfully.')),
+        SnackBar(
+          content: Text(userRole == 'admin' 
+            ? 'Part $part deleted successfully.'
+            : 'Your projects in Part $part deleted successfully.'),
+        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -546,11 +628,7 @@ class _Part3State extends State<Part3> {
 
   @override
   Widget build(BuildContext context) {
-    if (_showProjectTypeSelection) {
-      return _buildProjectTypeSelection();
-    }
-
-    if (_userRole == 'admin' && !_showProjectTypeSelection) {
+    if (_userRole == 'admin') {
       bool isSmallScreen = MediaQuery.of(context).size.width < 650;
       return isSmallScreen
           ? Center(
@@ -658,6 +736,10 @@ class _Part3State extends State<Part3> {
                   ),
               ],
             );
+    }
+
+    if (_showProjectTypeSelection) {
+      return _buildProjectTypeSelection();
     }
 
     bool isSmallScreen = MediaQuery.of(context).size.width < 650;
@@ -942,5 +1024,19 @@ class _Part3State extends State<Part3> {
         ),
       ),
     );
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted && !_isCompiling && !_isLoading) {
+        _checkExistingData();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 }

@@ -19,33 +19,33 @@ class _StartupPageState extends State<StartupPage> {
   static const double _minTileWidth = 120;
 
   final List<_Choice> _choices = const [
-    _Choice('COMMUNITY-BASED MONITORING SYSTEM (CBMS)', Icons.map),
-    _Choice('CENSUS OF POPULATION AND HOUSING (POPCEN)', Icons.people),
-    _Choice('CENSUS OF AGRICULTURE AND FISHERIES (CAF)', Icons.agriculture),
-    _Choice('PHILIPPINE IDENTIFICATION SYSTEM (PHILSYS)', Icons.fingerprint),
-    _Choice('FAMILY INCOME AND EXPENDITURE SURVEY (FIES)', Icons.attach_money),
-    _Choice('FUNCTIONAL LITERACY AND MASS MEDIA SURVEY (FLEMMS)', Icons.menu_book),
-    _Choice('PHILIPPINE CIVIL REGISTRATION AND VITAL STATISTICS (CRVS) SYSTEM', Icons.fiber_manual_record),
-    _Choice('ANNUAL POVERTY INDICATORS SURVEY (APIS)', Icons.bar_chart),
-    _Choice('SURVEY OF TOURISM (STEP)', Icons.beach_access),
-    _Choice('DEVELOPMENT/ENHANCEMENT OF THE DESIGN (DEDSSFIGI)', Icons.public),
-    _Choice('ANNUAL SURVEY OF PHILIPPINE BUSINESS AND INDUSTRY (ASPBI)', Icons.business),
-    _Choice('CENSUS OF PHILIPPINE BUSINESS AND INDUSTRY (CPBI)', Icons.account_balance),
-    _Choice('NATIONAL DEMOGRAPHIC AND HEALTH SURVEY (NDHS)', Icons.health_and_safety),
-    _Choice('SURVEY ON INFORMATION AND COMMUNICATION (SICT)', Icons.computer),
-    _Choice('CONSUMER EXPECTATIONS SURVEY (CES)', Icons.shopping_cart),
-    _Choice('REDMINE TRACKING MANAGEMENT SYSTEM (CVS)', Icons.security),
-    _Choice('BUSINESS REGISTER INTEGRATED MONITORING (BRIMPS)', Icons.folder_shared),
-    _Choice('OWS AND ISLE DATA PROCESSING AND MANAGEMENT SYSTEM (OIDPMS)', Icons.storage),
-    _Choice('QUARTERLY SURVEY OF PHILIPPINE (QSPBI)', Icons.query_stats),
-    _Choice('WORKPLACE APPLICATION FOR CITY (PSA)', Icons.work),
-    _Choice('SOLEMNIZING OFFICERS (SOIS)', Icons.how_to_reg),
-    _Choice('SURVEY ON COSTS AND RETURNS (SCR)', Icons.receipt_long),
-    _Choice('SURVEY ON FOOD DEMAND (SFD)', Icons.fastfood),
-    _Choice('NATIONAL MIGRATION SURVEY (NMS)', Icons.flight),
-    _Choice('NATIONAL ICT HOUSEHOLD SURVEY (NICTHS)', Icons.home),
-    _Choice('HOUSEHOLD SURVEY ON DOMESTIC VISITORS (HSDV)', Icons.hotel),
-    _Choice('HOUSEHOLD ENERGY CONSUMPTION SURVEY (HECS)', Icons.flash_on),
+    _Choice('COMMUNITY-BASED MONITORING SYSTEM (CBMS)', 'CBMS', Icons.map),
+    _Choice('CENSUS OF POPULATION AND HOUSING (POPCEN)', 'POPCEN', Icons.people),
+    _Choice('CENSUS OF AGRICULTURE AND FISHERIES (CAF)', 'CAF', Icons.agriculture),
+    _Choice('PHILIPPINE IDENTIFICATION SYSTEM (PHILSYS)', 'PHILSYS', Icons.fingerprint),
+    _Choice('FAMILY INCOME AND EXPENDITURE SURVEY (FIES)', 'FIES', Icons.attach_money),
+    _Choice('FUNCTIONAL LITERACY AND MASS MEDIA SURVEY (FLEMMS)', 'FLEMMS', Icons.menu_book),
+    _Choice('PHILIPPINE CIVIL REGISTRATION AND VITAL STATISTICS (CRVS) SYSTEM', 'CRVS', Icons.fiber_manual_record),
+    _Choice('ANNUAL POVERTY INDICATORS SURVEY (APIS)', 'APIS', Icons.bar_chart),
+    _Choice('SURVEY OF TOURISM (STEP)', 'STEP', Icons.beach_access),
+    _Choice('DEVELOPMENT/ENHANCEMENT OF THE DESIGN (DEDSSFIGI)', 'DEDSSFIGI', Icons.public),
+    _Choice('ANNUAL SURVEY OF PHILIPPINE BUSINESS AND INDUSTRY (ASPBI)', 'ASPBI', Icons.business),
+    _Choice('CENSUS OF PHILIPPINE BUSINESS AND INDUSTRY (CPBI)', 'CPBI', Icons.account_balance),
+    _Choice('NATIONAL DEMOGRAPHIC AND HEALTH SURVEY (NDHS)', 'NDHS', Icons.health_and_safety),
+    _Choice('SURVEY ON INFORMATION AND COMMUNICATION (SICT)', 'SICT', Icons.computer),
+    _Choice('CONSUMER EXPECTATIONS SURVEY (CES)', 'CES', Icons.shopping_cart),
+    _Choice('REDMINE TRACKING MANAGEMENT SYSTEM (CVS)', 'CVS', Icons.security),
+    _Choice('BUSINESS REGISTER INTEGRATED MONITORING (BRIMPS)', 'BRIMPS', Icons.folder_shared),
+    _Choice('OWS AND ISLE DATA PROCESSING AND MANAGEMENT SYSTEM (OIDPMS)', 'OIDPMS', Icons.storage),
+    _Choice('QUARTERLY SURVEY OF PHILIPPINE (QSPBI)', 'QSPBI', Icons.query_stats),
+    _Choice('WORKPLACE APPLICATION FOR CITY (PSA)', 'PSA', Icons.work),
+    _Choice('SOLEMNIZING OFFICERS (SOIS)', 'SOIS', Icons.how_to_reg),
+    _Choice('SURVEY ON COSTS AND RETURNS (SCR)', 'SCR', Icons.receipt_long),
+    _Choice('SURVEY ON FOOD DEMAND (SFD)', 'SFD', Icons.fastfood),
+    _Choice('NATIONAL MIGRATION SURVEY (NMS)', 'NMS', Icons.flight),
+    _Choice('NATIONAL ICT HOUSEHOLD SURVEY (NICTHS)', 'NICTHS', Icons.home),
+    _Choice('HOUSEHOLD SURVEY ON DOMESTIC VISITORS (HSDV)', 'HSDV', Icons.hotel),
+    _Choice('HOUSEHOLD ENERGY CONSUMPTION SURVEY (HECS)', 'HECS', Icons.flash_on),
   ];
 
   @override
@@ -64,7 +64,7 @@ class _StartupPageState extends State<StartupPage> {
     final subRoles = List<String>.from(userDoc.data()?['sub_roles'] ?? []);
     final indices = <int>{};
     for (int i = 0; i < _choices.length; i++) {
-      if (subRoles.contains(_choices[i].label)) {
+      if (subRoles.contains(_choices[i].abbreviation)) {
         indices.add(i);
       }
     }
@@ -97,7 +97,7 @@ class _StartupPageState extends State<StartupPage> {
         return;
       }
 
-      final selectedProjects = selection.map((index) => _choices[index].label).toSet().toList();
+      final selectedProjects = selection.map((index) => _choices[index].abbreviation).toSet().toList();
 
       await FirebaseFirestore.instance
           .collection('users')
@@ -210,44 +210,6 @@ class _StartupPageState extends State<StartupPage> {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            final selectionModel = context.read<SelectionModel>();
-                            if (selectionModel.selected.length == _choices.length) {
-                              selectionModel.clear();
-                            } else {
-                              selectionModel.selectAll(_choices.length);
-                            }
-                          },
-                          icon: Icon(
-                            context.watch<SelectionModel>().selected.length == _choices.length
-                                ? Icons.deselect
-                                : Icons.select_all,
-                            color: Colors.white,
-                          ),
-                          label: Text(
-                            context.watch<SelectionModel>().selected.length == _choices.length
-                                ? 'Deselect All'
-                                : 'Select All',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Color(0xff021e84),
-                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 2,
-                          ),
-                        ),
-                      ],
-                    ),
                     SizedBox(height: 24),
 
                     Expanded(
@@ -289,7 +251,13 @@ class _StartupPageState extends State<StartupPage> {
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(16),
                                 onTap: () {
-                                  context.read<SelectionModel>().toggle(i);
+                                  final selectionModel = context.read<SelectionModel>();
+                                  if (selectionModel.selected.contains(i)) {
+                                    selectionModel.clear();
+                                  } else {
+                                    selectionModel.clear();
+                                    selectionModel.toggle(i);
+                                  }
                                 },
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -368,6 +336,7 @@ class _StartupPageState extends State<StartupPage> {
 
 class _Choice {
   final String label;
+  final String abbreviation;
   final IconData icon;
-  const _Choice(this.label, this.icon);
+  const _Choice(this.label, this.abbreviation, this.icon);
 }

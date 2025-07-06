@@ -13,6 +13,7 @@ import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
+import '../../utils/dialog_utils.dart';
 
 class PartIIC extends StatefulWidget {
   final String documentId;
@@ -32,6 +33,7 @@ class _PartIICState extends State<PartIIC> {
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String _userRole = '';
 
   @override
   void initState() {
@@ -42,7 +44,18 @@ class _PartIICState extends State<PartIIC> {
         .doc(_yearRange)
         .collection('sections')
         .doc('II.C');
+    _fetchUserRole();
     _loadContent();
+  }
+
+  Future<void> _fetchUserRole() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      setState(() {
+        _userRole = userDoc.data()?['role'] ?? '';
+      });
+    }
   }
 
   Future<void> _loadContent() async {
@@ -309,148 +322,29 @@ class _PartIICState extends State<PartIIC> {
     setState(() {});
   }
 
+  void updateDatabaseNamePrefixes() {
+    for (var i = 0; i < dbControllers.length; i++) {
+      final dbNumber = 'DB${(i + 1).toString().padLeft(2, '0')}';
+      final controller = dbControllers[i]['name_of_database']!;
+      final text = controller.text;
+      final regex = RegExp(r'^(DB\d{2}\.\s*)+');
+      final cleanValue = text.replaceFirst(regex, '').trim();
+      controller.text = '$dbNumber. ${cleanValue.isNotEmpty ? cleanValue : ''}';
+    }
+  }
+
   void removeDatabase(int index) {
     dbControllers.removeAt(index);
+    updateDatabaseNamePrefixes();
     setState(() {});
   }
 
   Future<void> _showRemoveConfirmation(int index) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await DialogUtils.showDeleteConfirmationDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          backgroundColor: Colors.white,
-          elevation: 20,
-          title: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xff021e84), Color(0xff1e40af)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.delete_forever, color: Colors.white, size: 24),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Remove Database',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          content: Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xff021e84).withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: const Color(0xff021e84).withOpacity(0.1),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.warning_amber,
-                        color: Color(0xff021e84),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Are you sure you want to remove Database ${index + 1}? This action cannot be undone.',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: Color(0xFF4A5568),
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              child: TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(color: Colors.grey.shade300),
-                  ),
-                ),
-                child: const Text(
-                  'Cancel',
-                  style: TextStyle(
-                    color: Color(0xFF4A5568),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color.fromARGB(255, 132, 2, 2).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text(
-                  'Remove',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+      title: 'Delete Database',
+      message: 'Are you sure you want to remove Database ${index + 1}? This action cannot be undone.',
+      confirmText: 'Delete Database',
     );
     
     if (confirmed == true) {
@@ -505,12 +399,12 @@ class _PartIICState extends State<PartIIC> {
                     hintText: 'Enter database name (DB number will be added automatically)',
                   ),
                   onChanged: (value) {
+                    final dbNumber = 'DB${(index + 1).toString().padLeft(2, '0')}. ';
                     if (!value.startsWith(dbNumber)) {
-                      final cleanValue = value.replaceAll(dbNumber, '').trim();
-                      controllers['name_of_database']!.text = '$dbNumber. $cleanValue';
-                      controllers['name_of_database']!.selection = TextSelection.fromPosition(
-                        TextPosition(offset: controllers['name_of_database']!.text.length),
-                      );
+                      final regex = RegExp(r'^(DB\d{2}\.\s*)+');
+                      final cleanValue = value.replaceFirst(regex, '');
+                      controllers['name_of_database']!.text = dbNumber + cleanValue;
+                      controllers['name_of_database']!.selection = TextSelection.collapsed(offset: dbNumber.length);
                     }
                   },
                 ),
@@ -700,142 +594,8 @@ class _PartIICState extends State<PartIIC> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await showDialog<bool>(
+        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
           context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              backgroundColor: Colors.white,
-              elevation: 20,
-              title: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xff021e84), Color(0xff1e40af)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.warning_amber, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Save Before Leaving',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              content: Container(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff021e84).withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xff021e84).withOpacity(0.1),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: Color(0xff021e84),
-                            size: 20,
-                          ),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Make sure to save before leaving to avoid losing your work.',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Color(0xFF4A5568),
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(color: Colors.grey.shade300),
-                      ),
-                    ),
-                    child: const Text(
-                      'Stay',
-                      style: TextStyle(
-                        color: Color(0xFF4A5568),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color.fromARGB(255, 132, 2, 2).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text(
-                      'Leave Anyway',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
         );
         return shouldPop ?? false;
       },
@@ -967,26 +727,69 @@ class _PartIICState extends State<PartIIC> {
                           ),
                         ),
                         const SizedBox(height: 24),
-                        ...dbControllers.asMap().entries.map((entry) =>
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 24),
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(15),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withOpacity(0.1),
-                                  spreadRadius: 2,
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
+                        if (_userRole == 'admin')
+                          ReorderableListView(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            onReorder: (oldIndex, newIndex) {
+                              setState(() {
+                                if (newIndex > oldIndex) newIndex -= 1;
+                                final item = dbControllers.removeAt(oldIndex);
+                                dbControllers.insert(newIndex, item);
+                                updateDatabaseNamePrefixes();
+                              });
+                            },
+                            children: [
+                              for (final entry in dbControllers.asMap().entries)
+                                Container(
+                                  key: ValueKey('database_${entry.key}'),
+                                  margin: const EdgeInsets.only(bottom: 24),
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(15),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.grey.withOpacity(0.1),
+                                        spreadRadius: 2,
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                    border: Border.all(color: Colors.grey.shade200),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      databaseTableForm(entry.value, entry.key),
+                                    ],
+                                  ),
                                 ),
-                              ],
-                              border: Border.all(color: Colors.grey.shade200),
-                            ),
-                            child: databaseTableForm(entry.value, entry.key),
+                            ],
+                          )
+                        else
+                          Column(
+                            children: [
+                              for (final entry in dbControllers.asMap().entries)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 24),
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(15),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.grey.withOpacity(0.1),
+                                        spreadRadius: 2,
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                    border: Border.all(color: Colors.grey.shade200),
+                                  ),
+                                  child: databaseTableForm(entry.value, entry.key),
+                                ),
+                            ],
                           ),
-                        ),
                         if (!_isFinalized)
                           Center(
                             child: ElevatedButton.icon(

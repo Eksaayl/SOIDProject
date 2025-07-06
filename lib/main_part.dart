@@ -10,31 +10,12 @@ import 'services/notification_service.dart';
 import 'roles.dart';
 import 'package:provider/provider.dart';
 import 'state/selection_model.dart';
+import 'utils/dialog_utils.dart';
 
 Future<bool> showFinalizeConfirmation(BuildContext context, String sectionName) async {
-  return await showDialog<bool>(
+  return await DialogUtils.showFinalizeConfirmationDialog(
     context: context,
-    builder: (BuildContext context) {
-      return AlertDialog(
-        title: const Text('Confirm Submission'),
-        content: Text('Are you sure you want to submit $sectionName? This action cannot be undone.'),
-        actions: <Widget>[
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          TextButton(
-            child: const Text('Submit'),
-            onPressed: () async {
-              Navigator.of(context).pop(true);
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xff021e84),
-            ),
-          ),
-        ],
-      );
-    },
+    sectionName: sectionName,
   ) ?? false;
 }
 
