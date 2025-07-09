@@ -572,7 +572,111 @@ async def merge_documents_part_iv(
     except Exception as e:
         print(f"Unexpected error in merge_documents_part_iv: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    
+
+@app.post("/merge-documents-part-v")
+async def merge_documents_part_v(
+    part_v_a: UploadFile = File(...),
+    part_v_b: UploadFile = File(...),
+    part_v_c: UploadFile = File(...),
+    part_v_d: UploadFile = File(...),
+):
+    try:
+        try:
+            v_a_bytes = io.BytesIO(await part_v_a.read())
+            v_b_bytes = io.BytesIO(await part_v_b.read())
+            v_c_bytes = io.BytesIO(await part_v_c.read())
+            v_d_bytes = io.BytesIO(await part_v_d.read())
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to read uploaded files: {str(e)}")
+
+        try:
+            v_a_doc = Document(v_a_bytes)
+            v_b_doc = Document(v_b_bytes)
+            v_c_doc = Document(v_c_bytes)
+            v_d_doc = Document(v_d_bytes)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse DOCX files: {str(e)}")
+
+        def add_page_break(doc):
+            try:
+                p = doc.add_paragraph()
+                run = p.add_run()
+                run.add_break()
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to add page break: {str(e)}")
+
+        try:
+            # Add page breaks between sections
+            add_page_break(v_a_doc)
+            add_page_break(v_b_doc)
+            add_page_break(v_c_doc)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to add page breaks: {str(e)}")
+
+        try:
+            # Merge all documents in order: V.A -> V.B -> V.C -> V.D
+            composer = Composer(v_a_doc)
+            composer.append(v_b_doc)
+            composer.append(v_c_doc)
+            composer.append(v_d_doc)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to merge documents: {str(e)}")
+
+        try:
+            output = io.BytesIO()
+            composer.save(output)
+            output.seek(0)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save merged document: {str(e)}")
+
+        return StreamingResponse(
+            output,
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in merge_documents_part_v: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.post("/merge-all-parts")
+async def merge_all_parts(
+    i: UploadFile = File(...),
+    ii: UploadFile = File(...),
+    iii: UploadFile = File(...),
+    iv: UploadFile = File(...),
+    v: UploadFile = File(...),
+):
+    try:
+        import io
+        from docx import Document
+        from docxcompose.composer import Composer
+        # Read all files into memory as Document objects
+        i_doc = Document(io.BytesIO(await i.read()))
+        ii_doc = Document(io.BytesIO(await ii.read()))
+        iii_doc = Document(io.BytesIO(await iii.read()))
+        iv_doc = Document(io.BytesIO(await iv.read()))
+        v_doc = Document(io.BytesIO(await v.read()))
+
+        # Merge all documents in order
+        composer = Composer(i_doc)
+        composer.append(ii_doc)
+        composer.append(iii_doc)
+        composer.append(iv_doc)
+        composer.append(v_doc)
+
+        output = io.BytesIO()
+        composer.save(output)
+        output.seek(0)
+
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": "attachment; filename=Complete_ISSP.docx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
 @app.post("/generate-ia-docx/")
 async def generate_ia_docx_endpoint(request: Request):
     data = await request.json()
