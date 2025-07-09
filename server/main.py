@@ -285,7 +285,7 @@ async def generate_docx(
                     raise HTTPException(status_code=400, detail="Part IV.B requires exactly 3 images")
                 if year_range:
                     temp_template_with_year = f"temp_iv_b_with_year_{timestamp}.docx"
-                    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'IV_b.docx')
+                    template_path = os.path.join(os.path.dirname(__file__), 'assets', 'IV_b.docx')
                     replacements = {"${yearRange}": year_range}
                     fill_placeholders_and_bullets(template_path, temp_template_with_year, replacements)
                     template_file = temp_template_with_year
@@ -695,7 +695,7 @@ async def generate_ia_docx_endpoint(request: Request):
     temp_dir = tempfile.gettempdir()
     filename = f"ia_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
-    template_path = 'assets/a.docx'
+    template_path = os.path.join(os.path.dirname(__file__), 'assets', 'a.docx')
     fill_placeholders_and_bullets(template_path, output_path, replacements)
     from fastapi.responses import FileResponse
     return FileResponse(output_path, filename="document.docx", media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
@@ -712,7 +712,7 @@ async def generate_iib_docx_endpoint(request: Request):
     filename = f"iib_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
     
-    template_path = 'assets/II_b.docx'
+    template_path = os.path.join(os.path.dirname(__file__), 'assets', 'II_b.docx')
     if year_range:
         temp_template_path = os.path.join(temp_dir, f"temp_iib_template_{uuid.uuid4().hex}.docx")
         replacements = {"${yearRange}": year_range}
@@ -743,7 +743,7 @@ async def generate_iic_docx_endpoint(request: Request):
     filename = f"iic_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
     
-    template_path = 'assets/II_c.docx'
+    template_path = os.path.join(os.path.dirname(__file__), 'assets', 'II_c.docx')
     if year_range:
         temp_template_path = os.path.join(temp_dir, f"temp_iic_template_{uuid.uuid4().hex}.docx")
         replacements = {"${yearRange}": year_range}
@@ -773,7 +773,7 @@ async def generate_iii_a_docx_endpoint(request: Request):
     filename = f"iii_a_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
     
-    template_path = 'assets/III_a.docx'
+    template_path = os.path.join(os.path.dirname(__file__), 'assets', 'III_a.docx')
     if year_range:
         temp_template_path = os.path.join(temp_dir, f"temp_iii_a_template_{uuid.uuid4().hex}.docx")
         replacements = {"${yearRange}": year_range}
@@ -803,7 +803,7 @@ async def generate_iii_b_docx_endpoint(request: Request):
     filename = f"iii_b_{uuid.uuid4().hex}.docx"
     output_path = os.path.join(temp_dir, filename)
     
-    template_path = 'assets/III_b.docx'
+    template_path = os.path.join(os.path.dirname(__file__), 'assets', 'III_b.docx')
     if year_range:
         temp_template_path = os.path.join(temp_dir, f"temp_iii_b_template_{uuid.uuid4().hex}.docx")
         replacements = {"${yearRange}": year_range}
@@ -922,7 +922,7 @@ async def generate_ib_docx_endpoint(request: Request):
         processed_data['yearRange'] = year_range
         logger.debug(f"Processed data: {processed_data}")
         
-        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'b.docx')
+        template_path = os.path.join(os.path.dirname(__file__), 'assets', 'b.docx')
         logger.debug(f"Looking for template at: {template_path}")
         
         if not os.path.exists(template_path):
@@ -962,7 +962,7 @@ async def generate_iiic_docx_endpoint(request: Request):
         temp_dir = tempfile.gettempdir()
         filename = f"iiic_{uuid.uuid4().hex}.docx"
         output_path = os.path.join(temp_dir, filename)
-        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'III_c.docx')
+        template_path = os.path.join(os.path.dirname(__file__), 'assets', 'III_c.docx')
         
         logger.debug(f"[IIIC DOCX] Template path: {template_path}")
         if not os.path.exists(template_path):
@@ -1030,7 +1030,7 @@ async def generate_va_docx_endpoint(request: Request):
         filename = f"va_{uuid.uuid4().hex}.docx"
         output_path = os.path.join(temp_dir, filename)
         
-        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'V_a.docx')
+        template_path = os.path.join(os.path.dirname(__file__), 'assets', 'V_a.docx')
         
         logger.debug(f"[VA DOCX] Template path: {template_path}")
         if not os.path.exists(template_path):
@@ -1096,7 +1096,7 @@ async def generate_vb_docx_endpoint(request: Request):
         filename = f"vb_{uuid.uuid4().hex}.docx"
         output_path = os.path.join(temp_dir, filename)
         
-        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'assets', 'V_b.docx')
+        template_path = os.path.join(os.path.dirname(__file__), 'assets', 'V_b.docx')
         
         logger.debug(f"[VB DOCX] Template path: {template_path}")
         if not os.path.exists(template_path):
