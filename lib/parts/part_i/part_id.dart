@@ -111,6 +111,7 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
   bool _saving = false;
   bool _isFinalized = false;
   bool _compiling = false;
+  bool _hasUnsavedChanges = false;
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
@@ -134,6 +135,14 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
         .doc('I.D');
 
     _loadData();
+  }
+
+  void _markUnsaved() {
+    if (!_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   Future<void> _loadData() async {
@@ -293,6 +302,10 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
     } finally {
       setState(() => _saving = false);
     }
+
+    setState(() {
+      _hasUnsavedChanges = false;
+    });
   }
 
   Future<void> _compileDocx() async {
@@ -385,10 +398,11 @@ class _PartIDFormPageState extends State<PartIDFormPage> {
 
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
-          context: context,
-        );
-        return shouldPop ?? false;
+        if (_hasUnsavedChanges) {
+          final shouldLeave = await DialogUtils.showSaveBeforeLeavingDialog(context: context);
+          return shouldLeave ?? false;
+        }
+        return true;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),

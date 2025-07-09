@@ -10,6 +10,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 import 'landing.dart';
 import 'config/firebase_config.dart';
+import 'config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +22,7 @@ void main() async {
   );
   
   await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
-  
+    
   runApp(
     ChangeNotifierProvider(
       create: (_) => SelectionModel(),

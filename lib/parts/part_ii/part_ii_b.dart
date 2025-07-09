@@ -14,6 +14,7 @@ import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
 import '../../utils/dialog_utils.dart';
+import '../../config.dart';
 
 class PartIIB extends StatefulWidget {
   final String documentId;
@@ -29,6 +30,7 @@ class _PartIIBState extends State<PartIIB> {
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
   bool _isFinalized = false;
+  bool _hasUnsavedChanges = false;
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
@@ -51,6 +53,19 @@ class _PartIIBState extends State<PartIIB> {
         .doc('II.B');
     _fetchUserRole();
     _loadContent();
+    for (final sys in systemControllers) {
+      for (final ctl in sys.values) {
+        ctl.addListener(_markUnsaved);
+      }
+    }
+  }
+
+  void _markUnsaved() {
+    if (!_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   Future<void> _fetchUserRole() async {
@@ -149,7 +164,7 @@ class _PartIIBState extends State<PartIIB> {
           };
         }).toList();
 
-        final url = Uri.parse('http://localhost:8000/generate-iib-docx/');
+        final url = Uri.parse('${Config.serverUrl}/generate-iib-docx/');
         final response = await http.post(
           url,
           headers: {'Content-Type': 'application/json'},
@@ -204,6 +219,9 @@ class _PartIIBState extends State<PartIIB> {
         SnackBar(content: Text('Save error: $e'))
       );
     } finally {
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
       setState(() => _saving = false);
     }
   }
@@ -530,10 +548,11 @@ class _PartIIBState extends State<PartIIB> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
-          context: context,
-        );
-        return shouldPop ?? false;
+        if (_hasUnsavedChanges) {
+          final shouldLeave = await DialogUtils.showSaveBeforeLeavingDialog(context: context);
+          return shouldLeave ?? false;
+        }
+        return true;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),

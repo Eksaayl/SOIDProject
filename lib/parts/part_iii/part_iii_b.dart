@@ -14,6 +14,7 @@ import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
 import '../../utils/dialog_utils.dart';
+import '../../config.dart';
 
 class PartIIIB extends StatefulWidget {
   final String documentId;
@@ -51,6 +52,7 @@ class _PartIIIBState extends State<PartIIIB> {
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
   bool _isFinalized = false;
+  bool _hasUnsavedChanges = false;
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
@@ -69,6 +71,25 @@ class _PartIIIBState extends State<PartIIIB> {
         .doc('III.B');
     _loadContent();
     _fetchUserRoleAndCheckBothSections();
+    // Add listeners for unsaved changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final project in projectControllers) {
+        project.name.addListener(_markUnsaved);
+        project.objectives.addListener(_markUnsaved);
+        project.duration.addListener(_markUnsaved);
+        project.deliverables.addListener(_markUnsaved);
+        project.leadAgency.addListener(_markUnsaved);
+        project.implementingAgencies.addListener(_markUnsaved);
+      }
+    });
+  }
+
+  void _markUnsaved() {
+    if (!_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   Future<void> _fetchUserRoleAndCheckBothSections() async {
@@ -156,6 +177,15 @@ class _PartIIIBState extends State<PartIIIB> {
               submittedBy: project['submitted_by'] ?? '',
             ));
           }
+          // Add listeners for unsaved changes
+          for (final project in projectControllers) {
+            project.name.addListener(_markUnsaved);
+            project.objectives.addListener(_markUnsaved);
+            project.duration.addListener(_markUnsaved);
+            project.deliverables.addListener(_markUnsaved);
+            project.leadAgency.addListener(_markUnsaved);
+            project.implementingAgencies.addListener(_markUnsaved);
+          }
         }
       }
     } catch (e) {
@@ -165,6 +195,15 @@ class _PartIIIBState extends State<PartIIIB> {
     }
     setState(() {});
     _AddBlankProject();
+    // Add listeners for unsaved changes to new blank project
+    for (final project in projectControllers) {
+      project.name.addListener(_markUnsaved);
+      project.objectives.addListener(_markUnsaved);
+      project.duration.addListener(_markUnsaved);
+      project.deliverables.addListener(_markUnsaved);
+      project.leadAgency.addListener(_markUnsaved);
+      project.implementingAgencies.addListener(_markUnsaved);
+    }
   }
 
   void _AddBlankProject() {
@@ -189,7 +228,7 @@ class _PartIIIBState extends State<PartIIIB> {
       }).toList();
 
       final formattedYearRange = formatYearRange(_yearRange);
-      final url = Uri.parse('http://localhost:8000/generate-iii-b-docx/');
+      final url = Uri.parse('${Config.serverUrl}/generate-iii-b-docx/');
       final response = await http.post(
         url,
         headers: {
@@ -292,6 +331,9 @@ class _PartIIIBState extends State<PartIIIB> {
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
 
       if (finalize) {
         await createSubmissionNotification('Part III.B', _yearRange);
@@ -649,10 +691,13 @@ class _PartIIIBState extends State<PartIIIB> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
-          context: context,
-        );
-        return shouldPop ?? false;
+        if (_hasUnsavedChanges) {
+          final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
+            context: context,
+          );
+          return shouldPop ?? false;
+        }
+        return true;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),

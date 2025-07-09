@@ -17,6 +17,7 @@ import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
 import '../../utils/dialog_utils.dart';
+import '../../config.dart';
 
 class PartVA extends StatefulWidget {
   final String documentId;
@@ -33,6 +34,7 @@ class _PartVAState extends State<PartVA> {
   bool _saving = false;
   bool _compiling = false;
   bool _isFinalized = false;
+  bool _hasUnsavedChanges = false;
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
@@ -48,6 +50,14 @@ class _PartVAState extends State<PartVA> {
         .collection('sections')
         .doc('V.A');
     _loadContent();
+  }
+
+  void _markUnsaved() {
+    if (!_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   Future<void> _loadContent() async {
@@ -77,6 +87,9 @@ class _PartVAState extends State<PartVA> {
       );
     } finally {
       setState(() => _loading = false);
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
     }
   }
 
@@ -100,6 +113,7 @@ class _PartVAState extends State<PartVA> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('ICT Projects Implementation Schedule image uploaded successfully'))
           );
+          _markUnsaved();
         }
       }
     } catch (e) {
@@ -144,7 +158,7 @@ class _PartVAState extends State<PartVA> {
         return null;
       }
 
-      final url = Uri.parse('http://localhost:8000/generate-va-docx/');
+      final url = Uri.parse('${Config.serverUrl}/generate-va-docx/');
       final request = http.MultipartRequest('POST', url);
       
       request.files.add(http.MultipartFile.fromBytes(
@@ -237,6 +251,9 @@ class _PartVAState extends State<PartVA> {
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
 
       final docxUrl = await _generateAndUploadDocx();
       if (docxUrl != null) {
@@ -310,7 +327,40 @@ class _PartVAState extends State<PartVA> {
   }
 
   Future<void> _openGoogleSheets() async {
-    const url = 'https://docs.google.com/spreadsheets/d/1QfWrNCEUgdQi_4uh6g6Ag4XB-lU6nI4Gr8GMSA7Lcfc/edit?usp=sharing'; 
+    String url;
+    switch (_yearRange) {
+      case '2729':
+        url = 'https://docs.google.com/spreadsheets/d/1-9K0UeP3elWExeoC1uiC8VfOfirZodMo/edit?usp=sharing&ouid=105049319277397400729&rtpof=true&sd=true';
+        break;
+      case '3032':
+        url = 'https://docs.google.com/spreadsheets/d/1QfWrNCEUgdQi_4uh6g6Ag4XB-lU6nI4Gr8GMSA7Lcfc/edit?usp=sharing';
+        break;
+      case '3335':
+        url = 'https://docs.google.com/spreadsheets/d/11tFKOmiXexMIMXIUNJkn2D3HZrQBHC9zWOs4SOsl0ok/edit?usp=sharing';
+        break;
+      case '3638':
+        url = 'https://docs.google.com/spreadsheets/d/1N2ZazAUbhkXclTd2mwBJC6ncg77dYzbSOYM9aHUQDnQ/edit?usp=sharing';
+        break;
+      case '3941':
+        url = 'https://docs.google.com/spreadsheets/d/1jtGszUx-WvViTyCalnio0pol4ruMNReyCAYBx0-_k-E/edit?usp=sharing';
+        break;
+      case '4244':
+        url = 'https://docs.google.com/spreadsheets/d/1k6NUNqYPkGHY_3HoON5eO2XOOKCmabKshPamnLcD7Ok/edit?usp=sharing';
+        break;
+      case '4547':
+        url = 'https://docs.google.com/spreadsheets/d/1MpcDkaLmXUg7uhPnVtCFncbwv1oNkcgPnxgUKoj9i7Q/edit?usp=sharing';
+        break;
+      case '4850':
+        url = 'https://docs.google.com/spreadsheets/d/1AXrRTx0Q5ADuqH8khDFoXN4cv2FTnMwsF-KHFcanFr4/edit?usp=sharing';
+        break;
+      case '5153':
+        url = 'https://docs.google.com/spreadsheets/d/14KXFAf0TZz18SdRSKIgwJqrNQENPjCuFCQgOQZ1l0PY/edit?usp=sharing';
+        break;
+      default:
+        url = 'https://docs.google.com/spreadsheets/d/1QfWrNCEUgdQi_4uh6g6Ag4XB-lU6nI4Gr8GMSA7Lcfc/edit?usp=sharing';
+        break;
+    }
+    
     try {
       if (await canLaunchUrl(Uri.parse(url))) {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -473,16 +523,19 @@ class _PartVAState extends State<PartVA> {
 
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
-          context: context,
-        );
-        return shouldPop ?? false;
+        if (_hasUnsavedChanges) {
+          final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
+            context: context,
+          );
+          return shouldPop ?? false;
+        }
+        return true;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),
         appBar: AppBar(
           title: const Text(
-            'Part V.A - ICT Projects Implementation Schedule Image Upload',
+            'Part V.A - ICT Projects Implementation Schedule',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 20,
@@ -514,7 +567,7 @@ class _PartVAState extends State<PartVA> {
                 onPressed: _isFinalized ? null : () async {
                   final confirmed = await showFinalizeConfirmation(
                     context,
-                    'Part V.A - ICT Projects Implementation Schedule Image Upload'
+                    'Part V.A - ICT Projects Implementation Schedule'
                   );
                   if (confirmed) {
                     setState(() => _isFinalized = true);
@@ -541,7 +594,7 @@ class _PartVAState extends State<PartVA> {
                     Icon(Icons.lock, size: 48, color: Colors.grey),
                     SizedBox(height: 12),
                     Text(
-                      'Part V.A - ICT Projects Implementation Schedule Image Upload has been finalized.',
+                      'Part V.A - ICT Projects Implementation Schedule has been finalized.',
                       style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
                   ],

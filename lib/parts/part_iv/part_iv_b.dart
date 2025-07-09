@@ -106,6 +106,7 @@ class _PartIVBState extends State<PartIVB> {
   bool _saving = false;
   bool _compiling = false;
   bool _isFinalized = false;
+  bool _hasUnsavedChanges = false;
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
@@ -123,6 +124,14 @@ class _PartIVBState extends State<PartIVB> {
         .doc('IV.B');
 
     _loadContent();
+  }
+
+  void _markUnsaved() {
+    if (!_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   Future<void> _loadContent() async {
@@ -168,6 +177,9 @@ class _PartIVBState extends State<PartIVB> {
       );
     } finally {
       setState(() => _loading = false);
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
     }
   }
 
@@ -201,6 +213,7 @@ class _PartIVBState extends State<PartIVB> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Image uploaded successfully'))
           );
+          _markUnsaved();
         }
       }
     } catch (e) {
@@ -261,6 +274,9 @@ class _PartIVBState extends State<PartIVB> {
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
 
       if (_existingBytes != null && _proposedBytes != null && _placementBytes != null) {
         try {
@@ -504,10 +520,13 @@ class _PartIVBState extends State<PartIVB> {
 
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
-          context: context,
-        );
-        return shouldPop ?? false;
+        if (_hasUnsavedChanges) {
+          final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
+            context: context,
+          );
+          return shouldPop ?? false;
+        }
+        return true;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),

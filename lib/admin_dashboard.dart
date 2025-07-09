@@ -14,12 +14,13 @@ import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'state/selection_model.dart';
+import '../config.dart';
 
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({Key? key}) : super(key: key);
 
   Future<String?> _convertDocxToHtml(Uint8List bytes, String filename) async {
-    final uri = Uri.parse('http://localhost:8000/convert-docx'); 
+    final uri = Uri.parse('${Config.serverUrl}/convert-docx'); 
     final request = http.MultipartRequest('POST', uri)
       ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     final response = await request.send();

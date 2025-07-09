@@ -6,11 +6,21 @@ import 'Parts/part_three.dart';
 import 'Parts/part_two.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'services/notification_service.dart';
 import 'roles.dart';
 import 'package:provider/provider.dart';
 import 'state/selection_model.dart';
 import 'utils/dialog_utils.dart';
+import 'package:file_saver/file_saver.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:typed_data';
+import 'package:http/http.dart' as http;
+import 'config.dart';
+import 'Parts/part_v/part_v_d.dart';
+import 'parts/merge_dashboard.dart';
 
 Future<bool> showFinalizeConfirmation(BuildContext context, String sectionName) async {
   return await DialogUtils.showFinalizeConfirmationDialog(
@@ -33,6 +43,7 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
   bool _hasAccess = false;
   String _userRole = '';
   late final AnimationController _controller;
+  bool _isMerging = false;
 
   final List<Map<String, dynamic>> _tabs = [
     {'label': 'Part I', 'content': const Part1()},
@@ -40,9 +51,14 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
     {'label': 'Part III', 'content': const Part3()},
     {'label': 'Part IV', 'content': const Part4()},
     {'label': 'Part V', 'content': const Part5()},
+    {'label': 'Merge All', 'content': null}, // Will be handled specially
   ];
 
   List<Map<String, dynamic>> _notifications = [];
+
+  // Merge Dashboard Data
+  Map<String, Map<String, dynamic>> _partStatus = {};
+  bool _isLoadingStatus = true;
 
   Future<void> _fetchUsername() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -709,6 +725,12 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
                     'expiresAt': data['expiresAt'],
                   };
                 }).toList();
+                
+                // Handle merge dashboard tab
+                if (_selectedIndex == 5) {
+                  return const MergeDashboard();
+                }
+                
                 return _tabs[_selectedIndex]['content'];
               },
             ),

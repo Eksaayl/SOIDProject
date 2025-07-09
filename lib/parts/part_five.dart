@@ -1,6 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_saver/file_saver.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:archive/archive.dart';
+import 'dart:convert';
+import 'package:provider/provider.dart';
+import '../state/selection_model.dart';
+import 'package:http/http.dart' as http;
+import '../config.dart';
 import 'part_v/part_v_a.dart';
 import 'part_v/part_v_b.dart';
+import 'part_v/part_v_c.dart';
+import 'part_v/part_v_d.dart';
 
 class Part5 extends StatefulWidget {
   const Part5({super.key});
@@ -11,6 +26,11 @@ class Part5 extends StatefulWidget {
 
 class _Part5State extends State<Part5> {
   int _selectedIndex = -1;
+  bool _isMerging = false;
+
+  String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  final _storage = FirebaseStorage.instance;
+  final _firestore = FirebaseFirestore.instance;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +73,8 @@ class _Part5State extends State<Part5> {
                     _buildTopButton('Part V.D', Icons.pie_chart_outline, 3),
                   ],
                 ),
+                const SizedBox(height: 24),
+                _buildMergeButton(),
               ],
             ),
           ],
@@ -81,6 +103,8 @@ class _Part5State extends State<Part5> {
             _buildTopButton('Part V.D', Icons.pie_chart_outline, 3),
           ],
         ),
+        const SizedBox(height: 24),
+        _buildMergeButton(),
       ],
     );
   }
@@ -101,14 +125,11 @@ class _Part5State extends State<Part5> {
           );
         } else if (index == 1) {
           Navigator.push(context, MaterialPageRoute(builder: (context) => const PartVB()));
+        } else if (index == 2) {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const PartVCFormPage(documentId: 'document')));
+        } else if (index == 3) {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const PartVDFormPage(documentId: 'document')));
         }
-        // Add navigation for other parts when they are created
-        // else if (index == 2) {
-        //   Navigator.push(context, MaterialPageRoute(builder: (context) => const PartVC()));
-        // }
-        // else if (index == 3) {
-        //   Navigator.push(context, MaterialPageRoute(builder: (context) => const PartVD()));
-        // }
       },
       icon: Icon(icon, color: _selectedIndex == index ? Colors.white : Colors.black),
       label: Text(
@@ -128,5 +149,194 @@ class _Part5State extends State<Part5> {
         ),
       ),
     );
+  }
+
+  Widget _buildMergeButton() {
+    if (_isMerging) {
+      return const CircularProgressIndicator();
+    }
+    
+    return ElevatedButton.icon(
+      onPressed: _mergeAllPartsV,
+      icon: const Icon(Icons.merge_type),
+      label: const Text('Merge All Parts V'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xff021e84),
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _mergeAllPartsV() async {
+    setState(() => _isMerging = true);
+    
+    try {
+      final sections = ['V.A', 'V.B', 'V.C', 'V.D'];
+      final sectionDocs = <String, DocumentSnapshot>{};
+      
+      for (final section in sections) {
+        final doc = await _firestore
+            .collection('issp_documents')
+            .doc(_yearRange)
+            .collection('sections')
+            .doc(section)
+            .get();
+        sectionDocs[section] = doc;
+      }
+
+      final notFinalized = <String>[];
+      for (final section in sections) {
+        final doc = sectionDocs[section]!;
+        final data = doc.data() as Map<String, dynamic>?;
+        
+        if (data == null) {
+          notFinalized.add(section);
+          continue;
+        }
+        
+        final isFinalized = (data['isFinalized'] as bool? ?? false) || (data['screening'] as bool? ?? false);
+        if (!isFinalized) {
+          notFinalized.add(section);
+        }
+      }
+
+      if (notFinalized.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please finalize the following sections first: ${notFinalized.join(", ")}'))
+        );
+        return;
+      }
+
+      final missingDocuments = <String>[];
+      for (final section in sections) {
+        final doc = sectionDocs[section]!;
+        final data = doc.data() as Map<String, dynamic>?;
+        
+        bool hasDocument = false;
+        if (data != null) {
+          if (section == 'V.A' || section == 'V.B') {
+            hasDocument = data['docxUrl'] != null;
+          } else {
+            hasDocument = data['fileUrl'] != null;
+          }
+        }
+        
+        if (!hasDocument) {
+          missingDocuments.add(section);
+        }
+      }
+
+      if (missingDocuments.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Documents are missing for the following sections: ${missingDocuments.join(", ")}'))
+        );
+        return;
+      }
+
+      final documents = <String, Uint8List>{};
+      for (final section in sections) {
+        final doc = sectionDocs[section]!;
+        final data = doc.data() as Map<String, dynamic>;
+        
+        String? fileUrl;
+        if (section == 'V.A' || section == 'V.B') {
+          fileUrl = data['docxUrl'] as String?;
+        } else {
+          fileUrl = data['fileUrl'] as String?;
+        }
+
+        if (fileUrl == null) {
+          throw Exception('Could not find document URL for $section');
+        }
+
+        String storagePath;
+        if (fileUrl.contains('firebasestorage.googleapis.com')) {
+          final uri = Uri.parse(fileUrl);
+          final pathSegments = uri.pathSegments;
+          final oIndex = pathSegments.indexOf('o');
+          if (oIndex != -1 && oIndex + 1 < pathSegments.length) {
+            final encodedPath = pathSegments[oIndex + 1];
+            storagePath = Uri.decodeComponent(encodedPath);
+          } else {
+            throw Exception('Invalid Firebase Storage URL format for $section');
+          }
+        } else {
+          final uri = Uri.parse(fileUrl);
+          final pathSegments = uri.pathSegments;
+          storagePath = pathSegments.sublist(pathSegments.length - 3).join('/');
+        }
+
+        final ref = _storage.ref().child(storagePath);
+
+        final bytes = await ref.getData();
+        if (bytes != null) {
+          documents[section] = bytes;
+        } else {
+          throw Exception('Could not download document for $section');
+        }
+      }
+
+      final merge_request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${Config.serverUrl}/merge-documents-part-v'),
+      );
+
+      merge_request.files.add(http.MultipartFile.fromBytes('part_v_a', documents['V.A']!, filename: 'part_v_a.docx'));
+      merge_request.files.add(http.MultipartFile.fromBytes('part_v_b', documents['V.B']!, filename: 'part_v_b.docx'));
+      merge_request.files.add(http.MultipartFile.fromBytes('part_v_c', documents['V.C']!, filename: 'part_v_c.docx'));
+      merge_request.files.add(http.MultipartFile.fromBytes('part_v_d', documents['V.D']!, filename: 'part_v_d.docx'));
+
+      final response = await merge_request.send();
+      if (response.statusCode != 200) {
+        final error = await response.stream.bytesToString();
+        throw Exception('Failed to merge documents: ${response.statusCode} - $error');
+      }
+
+      final mergedBytes = await response.stream.toBytes();
+      
+      final fileName = 'Part_V_Complete_${_yearRange}.docx';
+      
+      // Upload merged file to Firebase Storage for dashboard use
+      final mergedStoragePath = '$_yearRange/part_v_merged.docx';
+      final mergedRef = _storage.ref().child(mergedStoragePath);
+      await mergedRef.putData(mergedBytes);
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: fileName,
+          bytes: mergedBytes,
+          mimeType: MimeType.microsoftWord,
+        );
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/$fileName');
+        await file.writeAsBytes(mergedBytes);
+        await FileSaver.instance.saveFile(
+          name: fileName,
+          file: file,
+          mimeType: MimeType.microsoftWord,
+        );
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Documents merged successfully'),
+        ),
+      );
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error merging documents: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isMerging = false);
+    }
   }
 }

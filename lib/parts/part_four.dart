@@ -97,7 +97,7 @@ class _Part4State extends State<Part4> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Part IV documents merged successfully'))
+        const SnackBar(content: Text('Documents merged successfully'))
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

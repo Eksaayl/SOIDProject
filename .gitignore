@@ -115,3 +115,5 @@ build/
 **/windows/flutter/generated_plugin_registrant.h
 **/windows/flutter/generated_plugins.cmake
 web/index.html
+
+server/firebase_service_account.json

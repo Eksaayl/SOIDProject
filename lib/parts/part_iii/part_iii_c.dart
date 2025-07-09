@@ -15,6 +15,7 @@ import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
 import '../../utils/dialog_utils.dart';
+import '../../config.dart';
 
 class LogframeProject {
   List<Map<String, TextEditingController>> intermediateRows;
@@ -53,6 +54,7 @@ class _PartIIICState extends State<PartIIIC> {
   bool _loading = true;
   bool _saving = false;
   bool _isFinalized = false;
+  bool _hasUnsavedChanges = false;
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
@@ -92,6 +94,46 @@ class _PartIIICState extends State<PartIIIC> {
     _fetchUserRoleAndCheckBothSections();
     for (int i = 0; i < 3; i++) {
       _logframeControllers[i]['hierarchy']!.text = _defaultHierarchy[i];
+    }
+    // Add listeners for unsaved changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _addListenersToControllers();
+    });
+  }
+
+  void _markUnsaved() {
+    if (!_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
+  }
+
+  void _addListenersToControllers() {
+    // Add listeners to main logframe controllers
+    for (final controller in _logframeControllers) {
+      for (final textController in controller.values) {
+        textController.addListener(_markUnsaved);
+      }
+    }
+    
+    // Add listeners to project controllers
+    for (final project in _projects) {
+      for (final row in project.intermediateRows) {
+        for (final textController in row.values) {
+          textController.addListener(_markUnsaved);
+        }
+      }
+      for (final row in project.immediateRows) {
+        for (final textController in row.values) {
+          textController.addListener(_markUnsaved);
+        }
+      }
+      for (final row in project.outputRows) {
+        for (final textController in row.values) {
+          textController.addListener(_markUnsaved);
+        }
+      }
     }
   }
 
@@ -172,6 +214,12 @@ class _PartIIICState extends State<PartIIIC> {
       );
     } finally {
       setState(() => _loading = false);
+      // Add listeners to controllers after loading
+      _addListenersToControllers();
+      // Reset unsaved changes flag after loading
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
     }
   }
 
@@ -291,7 +339,7 @@ class _PartIIICState extends State<PartIIIC> {
 
   Future<void> _generateAndUploadDocx(Map<String, dynamic> logframeData) async {
     final formattedYearRange = formatYearRange(_yearRange);
-    final url = Uri.parse('http://localhost:8000/generate-iiic-docx/');
+    final url = Uri.parse('${Config.serverUrl}/generate-iiic-docx/');
     
     print('Part III.C - Sending data to backend:');
     print('Year range: $formattedYearRange');
@@ -361,6 +409,9 @@ class _PartIIICState extends State<PartIIIC> {
       await _sectionRef.set(payload, SetOptions(merge: true));
       await _generateAndUploadDocx(logframeData);
       setState(() => _isFinalized = finalize);
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
       if (finalize) {
         await createSubmissionNotification('Part III.C', _yearRange);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -470,6 +521,23 @@ class _PartIIICState extends State<PartIIIC> {
         setState(() {
         _projects.add(LogframeProject());
       });
+      // Add listeners to new project controllers
+      final newProject = _projects.last;
+      for (final row in newProject.intermediateRows) {
+        for (final textController in row.values) {
+          textController.addListener(_markUnsaved);
+        }
+      }
+      for (final row in newProject.immediateRows) {
+        for (final textController in row.values) {
+          textController.addListener(_markUnsaved);
+        }
+      }
+      for (final row in newProject.outputRows) {
+        for (final textController in row.values) {
+          textController.addListener(_markUnsaved);
+        }
+      }
       return;
     }
 
@@ -489,6 +557,23 @@ class _PartIIICState extends State<PartIIIC> {
     setState(() {
       _projects.add(LogframeProject(subRole: selectedSubRole));
     });
+    // Add listeners to new project controllers
+    final newProject = _projects.last;
+    for (final row in newProject.intermediateRows) {
+      for (final textController in row.values) {
+        textController.addListener(_markUnsaved);
+      }
+    }
+    for (final row in newProject.immediateRows) {
+      for (final textController in row.values) {
+        textController.addListener(_markUnsaved);
+      }
+    }
+    for (final row in newProject.outputRows) {
+      for (final textController in row.values) {
+        textController.addListener(_markUnsaved);
+      }
+    }
   }
 
   Future<void> _downloadDocx() async {
@@ -529,10 +614,13 @@ class _PartIIICState extends State<PartIIIC> {
     
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
-          context: context,
-        );
-        return shouldPop ?? false;
+        if (_hasUnsavedChanges) {
+          final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
+            context: context,
+          );
+          return shouldPop ?? false;
+        }
+        return true;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),

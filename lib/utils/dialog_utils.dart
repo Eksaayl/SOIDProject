@@ -33,7 +33,6 @@ class DialogUtils {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Blue gradient header with icon and title
                 Container(
                   width: double.infinity,
                   padding:
@@ -75,7 +74,6 @@ class DialogUtils {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Blue info note (was red warning note)
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -114,7 +112,6 @@ class DialogUtils {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Buttons
                 Row(
                   children: [
                     Expanded(
@@ -222,7 +219,6 @@ class DialogUtils {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Green gradient header with icon and title
                 Container(
                   width: double.infinity,
                   padding:
@@ -261,7 +257,6 @@ class DialogUtils {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Blue info note
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -300,7 +295,6 @@ class DialogUtils {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Buttons
                 Row(
                   children: [
                     Expanded(
@@ -403,7 +397,6 @@ class DialogUtils {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Blue gradient header with icon and title
                 Container(
                   width: double.infinity,
                   padding:
@@ -445,7 +438,6 @@ class DialogUtils {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Blue info note
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -477,7 +469,6 @@ class DialogUtils {
                   ),
                 ),
                 const SizedBox(height: 24),
-                // Buttons
                 Row(
                   children: [
                     Expanded(

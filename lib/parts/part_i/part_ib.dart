@@ -22,6 +22,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../../state/selection_model.dart';
 import '../../utils/dialog_utils.dart';
+import '../../config.dart';
 
 String xmlEscape(String input) => input
     .replaceAll('&', '&amp;')
@@ -220,6 +221,8 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
 
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
 
+  bool _hasUnsavedChanges = false;
+
   @override
   void initState() {
     super.initState();
@@ -281,6 +284,10 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     foContractualCtl.addListener(_updatePersonnelTotals);
 
     _loadData();
+
+    for (final ctl in [totalEmployeesCtl, totalCtl, regionalOfficesCtl, provincialOfficesCtl, otherOfficesCtl, coPlantilaCtl, coVacantCtl, coFilledPlantilaCtl, coFilledPhysicalCtl, coCoswsCtl, coContractualCtl, coTotalCtl, foPlantilaCtl, foVacantCtl, foFilledPlantilaCtl, foFilledPhysicalCtl, foCoswsCtl, foContractualCtl, foTotalCtl, plannerNameCtl, positionCtl, unitCtl, emailCtl, contactCtl, mooeCtl, coCtl]) {
+      ctl.addListener(_markUnsaved);
+    }
   }
 
   void _updateTotal() {
@@ -494,6 +501,14 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
     super.dispose();
   }
 
+  void _markUnsaved() {
+    if (!_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
+  }
+
   Future<void> _saveData({bool finalize = false}) async {
     if (_uploadedDocxBytes == null && !_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
@@ -568,7 +583,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
           'yearRange': formattedYearRange,
         };
 
-        final url = Uri.parse('http://localhost:8000/generate-ib-docx/');
+        final url = Uri.parse('${Config.serverUrl}/generate-ib-docx/');
         final response = await http.post(
           url,
           headers: {'Content-Type': 'application/json'},
@@ -638,6 +653,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         _isFinalized = finalize;
         _uploadedDocxBytes = null;
         _uploadedDocxName = null;
+        _hasUnsavedChanges = false;
       });
       if (finalize) {
         await createSubmissionNotification('Part I.B', _yearRange);
@@ -1224,10 +1240,11 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
 
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
-          context: context,
-        );
-        return shouldPop ?? false;
+        if (_hasUnsavedChanges) {
+          final shouldLeave = await DialogUtils.showSaveBeforeLeavingDialog(context: context);
+          return shouldLeave ?? false;
+        }
+        return true;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),

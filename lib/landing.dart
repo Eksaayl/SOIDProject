@@ -86,7 +86,6 @@ class _LandingState extends State<Landing> {
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
       if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', const HistoryPage()),
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
-      _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
 
     final bottomItems = <_NavItemData>[
@@ -166,7 +165,6 @@ class _LandingState extends State<Landing> {
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
       if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', const HistoryPage()),
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
-      _NavItemData(Icons.store, 'Store', const Center(child: Text('Store Page'))),
     ];
     final bottomItems = <_NavItemData>[
       _NavItemData(Icons.settings, 'Settings', const SettingsPage()),

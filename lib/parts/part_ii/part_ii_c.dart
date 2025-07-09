@@ -14,6 +14,7 @@ import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
 import 'package:provider/provider.dart';
 import '../../utils/dialog_utils.dart';
+import '../../config.dart';
 
 class PartIIC extends StatefulWidget {
   final String documentId;
@@ -29,6 +30,7 @@ class _PartIICState extends State<PartIIC> {
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
   bool _isFinalized = false;
+  bool _hasUnsavedChanges = false;
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
@@ -46,6 +48,19 @@ class _PartIICState extends State<PartIIC> {
         .doc('II.C');
     _fetchUserRole();
     _loadContent();
+    for (final db in dbControllers) {
+      for (final ctl in db.values) {
+        ctl.addListener(_markUnsaved);
+      }
+    }
+  }
+
+  void _markUnsaved() {
+    if (!_hasUnsavedChanges) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   Future<void> _fetchUserRole() async {
@@ -107,7 +122,7 @@ class _PartIICState extends State<PartIIC> {
         };
       }).toList();
 
-      final url = Uri.parse('http://localhost:8000/generate-iic-docx/');
+      final url = Uri.parse('${Config.serverUrl}/generate-iic-docx/');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -213,7 +228,7 @@ class _PartIICState extends State<PartIIC> {
           };
         }).toList();
 
-        final url = Uri.parse('http://localhost:8000/generate-iic-docx/');
+        final url = Uri.parse('${Config.serverUrl}/generate-iic-docx/');
         final response = await http.post(
           url,
           headers: {'Content-Type': 'application/json'},
@@ -269,6 +284,9 @@ class _PartIICState extends State<PartIIC> {
       );
     } finally {
       setState(() => _saving = false);
+      setState(() {
+        _hasUnsavedChanges = false;
+      });
     }
   }
 
@@ -594,10 +612,11 @@ class _PartIICState extends State<PartIIC> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        final shouldPop = await DialogUtils.showSaveBeforeLeavingDialog(
-          context: context,
-        );
-        return shouldPop ?? false;
+        if (_hasUnsavedChanges) {
+          final shouldLeave = await DialogUtils.showSaveBeforeLeavingDialog(context: context);
+          return shouldLeave ?? false;
+        }
+        return true;
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF7FAFC),
