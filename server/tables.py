@@ -3,7 +3,7 @@ from docx.shared import Pt, Inches
 
 def create_iib_docx(systems, output_path, template_path=None):
     if template_path is None:
-        template_path = r'C:/Users/User/Documents/SOIDProject/assets/II_b.docx'
+        template_path = 'assets/II_b.docx'
     doc = Document(template_path)
     for sys in systems:
         table = doc.add_table(rows=8, cols=3)
@@ -87,7 +87,7 @@ def create_iib_docx(systems, output_path, template_path=None):
 
 def create_iic_docx(databases, output_path, template_path=None):
     if template_path is None:
-        template_path = r'C:/Users/User/Documents/SOIDProject/assets/II_c.docx'
+        template_path = 'assets/II_c.docx'
     doc = Document(template_path)
     for db in databases:
         table = doc.add_table(rows=8, cols=3)
@@ -170,7 +170,7 @@ def create_iic_docx(databases, output_path, template_path=None):
 
 def create_iii_a_docx(projects, output_path, template_path=None):
     if template_path is None:
-        template_path = r'C:/Users/User/Documents/SOIDProject/assets/III_a.docx'
+        template_path = 'assets/III_a.docx'
     doc = Document(template_path)
     for idx, project in enumerate(projects):
         rank_para = doc.add_paragraph()
@@ -228,7 +228,7 @@ def create_iii_a_docx(projects, output_path, template_path=None):
 
 def create_iii_b_docx(projects, output_path, template_path=None):
     if template_path is None:
-        template_path = r'C:/Users/User/Documents/SOIDProject/assets/III_b.docx'
+        template_path = 'assets/III_b.docx'
     doc = Document(template_path)
     for project in projects:
         table = doc.add_table(rows=6, cols=2)

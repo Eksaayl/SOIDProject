@@ -154,7 +154,7 @@ async def generate_docx_II_a(template_file, images):
 
 async def generate_docx_II_d(template_file, images):
     try:
-        doc = Document(r'C:/Users/User/Documents/SOIDProject/assets/II_d.docx')
+        doc = Document('assets/II_d.docx')
         sorted_images = sorted(images, key=lambda x: x.filename)
         image_map = {
             'NLC': None,
