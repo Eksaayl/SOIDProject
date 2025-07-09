@@ -13,10 +13,10 @@ from docxcompose.composer import Composer
 from docx.shared import Inches, Pt, RGBColor
 import uvicorn
 import uuid
-from server.tables import create_iii_b_docx, create_iii_a_docx, create_iiic_logframe_table
+from tables import create_iii_b_docx, create_iii_a_docx, create_iiic_logframe_table
 import argparse
 import mammoth
-from server.part_ib_handler import generate_part_ib_docx, process_part_ib_data
+from part_ib_handler import generate_part_ib_docx, process_part_ib_data
 from datetime import datetime
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
@@ -30,8 +30,8 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -719,7 +719,7 @@ async def generate_iib_docx_endpoint(request: Request):
         fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
         template_path = temp_template_path
     
-    from server.tables import create_iib_docx
+    from tables import create_iib_docx
     create_iib_docx(systems, output_path, template_path)
     
     if year_range and os.path.exists(temp_template_path):
@@ -750,7 +750,7 @@ async def generate_iic_docx_endpoint(request: Request):
         fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
         template_path = temp_template_path
     
-    from server.tables import create_iic_docx
+    from tables import create_iic_docx
     create_iic_docx(databases, output_path, template_path)
     
     if year_range and os.path.exists(temp_template_path):
@@ -780,7 +780,7 @@ async def generate_iii_a_docx_endpoint(request: Request):
         fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
         template_path = temp_template_path
     
-    from server.tables import create_iii_a_docx
+    from tables import create_iii_a_docx
     create_iii_a_docx(projects, output_path, template_path)
     
     if year_range and os.path.exists(temp_template_path):
@@ -810,7 +810,7 @@ async def generate_iii_b_docx_endpoint(request: Request):
         fill_placeholders_and_bullets(template_path, temp_template_path, replacements)
         template_path = temp_template_path
     
-    from server.tables import create_iii_b_docx
+    from tables import create_iii_b_docx
     create_iii_b_docx(projects, output_path, template_path)
     
     if year_range and os.path.exists(temp_template_path):
