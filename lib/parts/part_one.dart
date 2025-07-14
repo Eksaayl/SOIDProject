@@ -85,7 +85,7 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
       for (var i = 0; i < sectionRefs.length; i++) {
         final sectionName = ['I.A', 'I.B', 'I.C', 'I.D', 'I.E'][i];
         final data = sectionRefs[i].data();
-        if (data != null && data.isNotEmpty) {
+        if (data != null && (data['isFinalized'] as bool? ?? false)) {
           sectionsWithData.add(sectionName);
         } else {
           sectionsWithoutData.add(sectionName);
@@ -94,7 +94,7 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
 
       if (sectionsWithoutData.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('The following sections have no data: ${sectionsWithoutData.join(", ")}'))
+          SnackBar(content: Text('The following sections are not finalized: ${sectionsWithoutData.join(", ")}'))
         );
         return;
       }
