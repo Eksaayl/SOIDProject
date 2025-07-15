@@ -21,14 +21,17 @@ from datetime import datetime
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
+import json
 
-# Initialize Firebase Admin if not already initialized
-if not firebase_admin._apps:
-    cred = credentials.Certificate('firebase_service_account.json')
-    firebase_admin.initialize_app(cred)
-    db = firestore.client()
+# Firebase Admin SDK initialization
+firebase_creds = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
+if firebase_creds:
+    cred = credentials.Certificate(json.loads(firebase_creds))
 else:
-    db = firestore.client()
+    cred = credentials.Certificate('firebase_service_account.json')
+
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 logging.basicConfig(
     level=logging.DEBUG,
