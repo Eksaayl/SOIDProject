@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:test_project/startup.dart';
+import 'package:test_project/startup_time.dart';
 import 'forgot_password.dart';
 import 'register.dart';
 
@@ -64,7 +64,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const StartupPage()),
+        MaterialPageRoute(builder: (_) => const StartupTimePage()),
       );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -162,10 +162,27 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Signed in with Google!')),
       );
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const StartupPage()),
-      );
+      // Check Firestore for profile completion
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      final profileComplete = userDoc.data()?['profileComplete'] == true;
+      if (!profileComplete) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => RegisterPage(
+              isGoogleSignIn: true,
+              initialUsername: user.displayName ?? '',
+              initialPhotoUrl: user.photoURL ?? '',
+              initialEmail: user.email ?? '',
+            ),
+          ),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const StartupTimePage()),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       debugPrint('❌ Google sign-in AuthException: ${e.code} ${e.message}');
       if (!mounted) return;

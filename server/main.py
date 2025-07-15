@@ -5,7 +5,7 @@ import tempfile
 import logging
 import traceback
 from typing import List, Dict, Any
-from fastapi import FastAPI, File, UploadFile, HTTPException, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from docx import Document
@@ -19,6 +19,16 @@ import mammoth
 from part_ib_handler import generate_part_ib_docx, process_part_ib_data
 from datetime import datetime
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+import firebase_admin
+from firebase_admin import credentials, auth, firestore
+
+# Initialize Firebase Admin if not already initialized
+if not firebase_admin._apps:
+    cred = credentials.Certificate('firebase_service_account.json')
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+else:
+    db = firestore.client()
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -1144,6 +1154,28 @@ async def generate_vb_docx_endpoint(request: Request):
         logger.error(f"Unexpected error in generate_vb_docx_endpoint: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.post('/delete-user')
+async def delete_user_endpoint(data: dict = Body(...)):
+    """
+    Delete a user from Firebase Auth and Firestore by email or uid.
+    Body: {"email": "user@example.com"} or {"uid": "..."}
+    """
+    try:
+        uid = data.get('uid')
+        email = data.get('email')
+        if not uid and not email:
+            return {"success": False, "error": "Provide 'uid' or 'email'"}
+        if not uid:
+            user = auth.get_user_by_email(email)
+            uid = user.uid
+        # Delete from Auth
+        auth.delete_user(uid)
+        # Delete from Firestore
+        db.collection('users').document(uid).delete()
+        return {"success": True, "uid": uid}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

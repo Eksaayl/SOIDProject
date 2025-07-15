@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'state/selection_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'finished_issp.dart';
 
 class StartupTimePage extends StatefulWidget {
   final bool fromSettings;
@@ -16,16 +17,23 @@ class StartupTimePage extends StatefulWidget {
 class _StartupTimePageState extends State<StartupTimePage> {
   static const double _minTileWidth = 120;
 
-  final List<String> _timeRanges = List.generate(9, (i) {
-    final start = 2027 + i * 3;
-    final end = start + 2;
-    return '$start-$end';
-  });
+  final List<String> _timeRanges = [
+    '2021-2023',
+    '2024-2026',
+    ...List.generate(9, (i) {
+      final start = 2027 + i * 3;
+      final end = start + 2;
+      return '$start-$end';
+    }),
+  ];
 
   int? _selected;
 
   String _getYearCode(int index) {
-    final start = 2027 + index * 3;
+    if (index == 0) return '2123'; 
+    if (index == 1) return '2426'; 
+    
+    final start = 2027 + (index - 2) * 3;
     return '${start.toString().substring(2)}${(start + 2).toString().substring(2)}';
   }
 
@@ -102,13 +110,27 @@ class _StartupTimePageState extends State<StartupTimePage> {
         ),
       );
 
-      if (widget.fromSettings) {
-        Navigator.pop(context);
-      } else {
+      // Check if selected option is 2021-2023 or 2024-2026
+      final selectedTimeRange = _timeRanges[_selected!];
+      if (selectedTimeRange == '2021-2023' || selectedTimeRange == '2024-2026') {
+        // Navigate to finished ISSP page (regardless of fromSettings)
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const Landing()),
+          MaterialPageRoute(
+            builder: (_) => FinishedISSPPage(yearRange: selectedTimeRange),
+          ),
         );
+      } else {
+        // For other time ranges, handle based on fromSettings
+        if (widget.fromSettings) {
+          Navigator.pop(context);
+        } else {
+          // Navigate to regular landing page for other time ranges
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const Landing()),
+          );
+        }
       }
     } catch (e) {
       if (!context.mounted) return;

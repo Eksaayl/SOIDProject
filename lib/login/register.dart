@@ -11,17 +11,22 @@ import 'dart:html' as html;
 import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/services.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+  final bool isGoogleSignIn;
+  final String initialUsername;
+  final String initialPhotoUrl;
+  final String initialEmail;
+  const RegisterPage({super.key, this.isGoogleSignIn = false, this.initialUsername = '', this.initialPhotoUrl = '', this.initialEmail = ''});
   @override
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameCtrl = TextEditingController();
-  final _emailCtrl    = TextEditingController();
+  late final TextEditingController _usernameCtrl;
+  late final TextEditingController _emailCtrl;
   final _passCtrl     = TextEditingController();
   final _confirmCtrl  = TextEditingController();
   final _serviceCtrl  = TextEditingController();
@@ -39,11 +44,29 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void initState() {
     super.initState();
+    _usernameCtrl = TextEditingController(text: widget.initialUsername);
+    _emailCtrl = TextEditingController(text: widget.initialEmail);
     _usernameCtrl.addListener(() {
       setState(() {
         _showUsernameHelp = _usernameCtrl.text.isNotEmpty;
       });
     });
+    // If initialPhotoUrl is provided, try to fetch and set _pickedImage
+    if (widget.initialPhotoUrl.isNotEmpty) {
+      _fetchInitialPhoto(widget.initialPhotoUrl);
+    }
+  }
+
+  Future<void> _fetchInitialPhoto(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      final response = await NetworkAssetBundle(uri).load(url);
+      setState(() {
+        _pickedImage = response.buffer.asUint8List();
+      });
+    } catch (e) {
+      // Ignore errors, user can still upload a new photo
+    }
   }
 
   @override
@@ -435,7 +458,6 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
       ),
     ).then((_) {
-      // This runs when dialog is dismissed (by any means)
       setState(() {
         _viewedPrivacy = true;
       });
@@ -445,7 +467,6 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
     
-    // Check if photo is selected
     if (_pickedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -467,15 +488,87 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
     
-    if (_passCtrl.text != _confirmCtrl.text) {
+    if (!widget.isGoogleSignIn) {
+      if (_passCtrl.text != _confirmCtrl.text) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Passwords do not match')),
+        );
+        return;
+      }
+    }
+
+    final usernameToCheck = _usernameCtrl.text.trim();
+    final emailToCheck = _emailCtrl.text.trim();
+    
+    // Check for username duplicates (case-insensitive)
+    final existingUsers = await _firestore.collection('users').get();
+    final existingUsernames = existingUsers.docs
+        .map((doc) => doc.data()['username'] as String?)
+        .where((username) => username != null)
+        .map((username) => username!.toLowerCase())
+        .toSet();
+    
+    if (existingUsernames.contains(usernameToCheck.toLowerCase())) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match')),
+        const SnackBar(
+          content: Text('Username already exists (case-insensitive). Please choose another.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
+    }
+    
+    // Check for email duplicates (case-insensitive)
+    if (!widget.isGoogleSignIn) {
+      final existingEmails = existingUsers.docs
+          .map((doc) => doc.data()['email'] as String?)
+          .where((email) => email != null)
+          .map((email) => email!.toLowerCase())
+          .toSet();
+      if (existingEmails.contains(emailToCheck.toLowerCase())) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Email already exists (case-insensitive). Please use a different email.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _isLoading = true);
     try {
+      String? photoURL;
+      if (_pickedImage != null) {
+        photoURL = await _uploadProfilePhoto();
+      }
+
+      if (widget.isGoogleSignIn) {
+        // For Google sign-in, just update Firestore and mark profileComplete
+        final user = _auth.currentUser;
+        if (user == null) throw Exception('No authenticated user');
+        await _firestore.collection('users').doc(user.uid).set({
+          'username': _usernameCtrl.text.trim(),
+          'email': _emailCtrl.text.trim(),
+          'service': _serviceCtrl.text.trim(),
+          'photoURL': photoURL,
+          'role': 'user',
+          'profileComplete': true,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        debugPrint('✅ Firestore write succeeded for Google user ${user.uid}');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated successfully!')),
+        );
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const StartupPage()),
+        );
+        return;
+      }
+
+      // For email/password sign-up
       final cred = await _auth.createUserWithEmailAndPassword(
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
@@ -483,18 +576,12 @@ class _RegisterPageState extends State<RegisterPage> {
       final uid = cred.user!.uid;
       debugPrint('🔑 Auth signup succeeded, uid = $uid');
 
-      // Upload profile photo and get download URL
-      String? photoURL;
-      if (_pickedImage != null) {
-        photoURL = await _uploadProfilePhoto();
-      }
-
       try {
         await _firestore.collection('users').doc(uid).set({
           'username': _usernameCtrl.text.trim(),
           'email': _emailCtrl.text.trim(),
           'service': _serviceCtrl.text.trim(),
-          'photoURL': photoURL, // Add photo URL to Firestore
+          'photoURL': photoURL, 
           'role': 'user',
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -594,6 +681,7 @@ class _RegisterPageState extends State<RegisterPage> {
     bool obscure = false,
     IconData? icon,
     String? Function(String?)? validator,
+    bool readOnly = false,
   }) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -611,6 +699,7 @@ class _RegisterPageState extends State<RegisterPage> {
           border: InputBorder.none,
         ),
         validator: validator,
+        readOnly: readOnly,
       ),
     );
   }
@@ -718,40 +807,43 @@ class _RegisterPageState extends State<RegisterPage> {
                             ),
                           ),
                         ),
+                      _buildTextField(
+                        controller: _emailCtrl,
+                        hint: 'Email',
+                        icon: Icons.email,
+                        validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Enter your email' : null,
+                        readOnly: widget.isGoogleSignIn,
+                      ),
+                      _buildTextField(
+                        controller: _serviceCtrl,
+                        hint: 'Service/Division',
+                        icon: Icons.business,
+                        validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Enter your service/division' : null,
+                      ),
+                      if (!widget.isGoogleSignIn) ...[
+                        _buildTextField(
+                          controller: _passCtrl,
+                          hint: 'Password',
+                          obscure: true,
+                          icon: Icons.lock,
+                          validator: (v) {
+                            if (v == null || v.isEmpty) return 'Enter your password';
+                            if (v.length < 6) return 'Minimum 6 characters';
+                            return null;
+                          },
+                        ),
+                        _buildTextField(
+                          controller: _confirmCtrl,
+                          hint: 'Confirm Password',
+                          obscure: true,
+                          icon: Icons.lock_outline,
+                          validator: (v) =>
+                          (v == null || v.isEmpty) ? 'Confirm your password' : null,
+                        ),
+                      ],
                     ],
-                  ),
-                  _buildTextField(
-                    controller: _emailCtrl,
-                    hint: 'Email',
-                    icon: Icons.email,
-                    validator: (v) =>
-                    (v == null || v.isEmpty) ? 'Enter your email' : null,
-                  ),
-                  _buildTextField(
-                    controller: _serviceCtrl,
-                    hint: 'Service/Division',
-                    icon: Icons.business,
-                    validator: (v) =>
-                    (v == null || v.isEmpty) ? 'Enter your service/division' : null,
-                  ),
-                  _buildTextField(
-                    controller: _passCtrl,
-                    hint: 'Password',
-                    obscure: true,
-                    icon: Icons.lock,
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Enter your password';
-                      if (v.length < 6) return 'Minimum 6 characters';
-                      return null;
-                    },
-                  ),
-                  _buildTextField(
-                    controller: _confirmCtrl,
-                    hint: 'Confirm Password',
-                    obscure: true,
-                    icon: Icons.lock_outline,
-                    validator: (v) =>
-                    (v == null || v.isEmpty) ? 'Confirm your password' : null,
                   ),
                   const SizedBox(height: 24),
                   Row(

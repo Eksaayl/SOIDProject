@@ -8,7 +8,7 @@ import 'package:test_project/settings.dart';
 import 'admin_dashboard.dart';
 import 'History.dart';
 import 'login/login.dart';
-import 'manage_roles.dart';
+import 'manage_users.dart';
 
 class Landing extends StatefulWidget {
   const Landing({super.key});
@@ -50,15 +50,6 @@ class _LandingState extends State<Landing> {
     final totalMain = mainItems.length;
     if (idx == totalMain + bottomItems.length - 1) {
       try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .update({
-            'sub_roles': FieldValue.delete(),
-          });
-        }
         await FirebaseAuth.instance.signOut();
         context.read<SelectionModel>().setAll({});
         Navigator.pushReplacement(
@@ -83,7 +74,7 @@ class _LandingState extends State<Landing> {
   Widget _buildSidebar(bool isDrawer) {
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
-      if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
+      if (_isAdmin) _NavItemData(Icons.group, 'Manage Users', const ManageUsersPage()),
       if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', const HistoryPage()),
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
     ];
@@ -162,7 +153,7 @@ class _LandingState extends State<Landing> {
 
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
-      if (_isAdmin) _NavItemData(Icons.group, 'Manage Roles', const ManageRolesPage()),
+      if (_isAdmin) _NavItemData(Icons.group, 'Manage Users', const ManageUsersPage()),
       if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', const HistoryPage()),
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
     ];
