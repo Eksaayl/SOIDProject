@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:test_project/main_part.dart';
 import 'package:test_project/state/selection_model.dart';
 import 'package:test_project/settings.dart';
+import 'package:test_project/profile.dart';
 import 'admin_dashboard.dart';
 import 'History.dart';
 import 'login/login.dart';
@@ -80,6 +81,7 @@ class _LandingState extends State<Landing> {
     ];
 
     final bottomItems = <_NavItemData>[
+      _NavItemData(Icons.person, 'Profile', const ProfilePage()),
       _NavItemData(Icons.settings, 'Settings', const SettingsPage()),
       _NavItemData(Icons.logout, 'Logout', null),
     ];
@@ -158,6 +160,7 @@ class _LandingState extends State<Landing> {
       if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
     ];
     final bottomItems = <_NavItemData>[
+      _NavItemData(Icons.person, 'Profile', const ProfilePage()),
       _NavItemData(Icons.settings, 'Settings', const SettingsPage()),
       _NavItemData(Icons.logout, 'Logout', null),
     ];
