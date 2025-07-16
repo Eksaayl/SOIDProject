@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../config.dart';
 
 class MergeDashboard extends StatefulWidget {
@@ -215,6 +216,61 @@ class _MergeDashboardState extends State<MergeDashboard> {
     }
   }
 
+  Future<void> _convertToPDF() async {
+    setState(() => _isMerging = true);
+    try {
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+      
+      // Call the new PDF conversion endpoint
+      final response = await http.post(
+        Uri.parse('${Config.serverUrl}/convert-storage-docx-to-pdf'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'yearRange': yearRange}),
+      );
+      
+      if (response.statusCode != 200) {
+        final error = response.body;
+        throw Exception('Failed to convert to PDF: ${response.statusCode} - $error');
+      }
+      
+      final pdfBytes = response.bodyBytes;
+      final fileName = 'Complete_ISSP_${yearRange}.pdf';
+      
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: fileName,
+          bytes: pdfBytes,
+          mimeType: MimeType.pdf,
+        );
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        final file = File('${directory.path}/$fileName');
+        await file.writeAsBytes(pdfBytes);
+        await FileSaver.instance.saveFile(
+          name: fileName,
+          file: file,
+          mimeType: MimeType.pdf,
+        );
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PDF conversion completed successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error converting to PDF: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isMerging = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingStatus) {
@@ -234,6 +290,7 @@ class _MergeDashboardState extends State<MergeDashboard> {
               allReady: allReady,
               isMerging: _isMerging,
               onMerge: allReady && !_isMerging ? _mergeAllParts : null,
+              onConvertToPDF: allReady && !_isMerging ? _convertToPDF : null,
               onRefresh: _loadPartStatus,
               isSmallScreen: isSmallScreen,
             ),
@@ -506,12 +563,14 @@ class _DashboardHeader extends SliverPersistentHeaderDelegate {
   final bool allReady;
   final bool isMerging;
   final VoidCallback? onMerge;
+  final VoidCallback? onConvertToPDF;
   final VoidCallback onRefresh;
   final bool isSmallScreen;
   _DashboardHeader({
     required this.allReady,
     required this.isMerging,
     required this.onMerge,
+    required this.onConvertToPDF,
     required this.onRefresh,
     required this.isSmallScreen,
   });
@@ -559,6 +618,28 @@ class _DashboardHeader extends SliverPersistentHeaderDelegate {
                 label: Text(isMerging ? 'Merging...' : 'Merge All Parts'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xff021e84),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  elevation: 2,
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: onConvertToPDF,
+                icon: isMerging
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.picture_as_pdf, color: Colors.white, size: 20),
+                label: Text(isMerging ? 'Converting...' : 'Convert to PDF'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),

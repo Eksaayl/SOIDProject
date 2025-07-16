@@ -22,6 +22,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 import json
+import subprocess
+import platform
 
 # Firebase Admin SDK initialization
 firebase_creds = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
@@ -1157,6 +1159,143 @@ async def generate_vb_docx_endpoint(request: Request):
         logger.error(f"Unexpected error in generate_vb_docx_endpoint: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+@app.post("/convert-storage-docx-to-pdf")
+async def convert_storage_docx_to_pdf(data: dict = Body(...)):
+    """
+    Convert existing DOCX files in Firebase Storage to PDF and merge them
+    Body: {"yearRange": "2729"}
+    """
+    try:
+        year_range = data.get('yearRange', '2729')
+        
+        merged_filenames = [
+            'part_i_merged.docx',
+            'part_ii_merged.docx', 
+            'part_iii_merged.docx',
+            'part_iv_merged.docx',
+            'part_v_merged.docx',
+        ]
+        
+        pdf_files = []
+        temp_files = []
+        
+        try:
+            # Download and convert each DOCX file to PDF
+            for filename in merged_filenames:
+                storage_path = f'{year_range}/{filename}'
+                
+                # Download DOCX from Firebase Storage
+                import firebase_admin
+                from firebase_admin import storage
+                
+                bucket = storage.bucket()
+                blob = bucket.blob(storage_path)
+                
+                if not blob.exists():
+                    raise HTTPException(status_code=404, detail=f"File {filename} not found in storage")
+                
+                # Download DOCX content
+                docx_content = blob.download_as_bytes()
+                
+                # Save to temporary file
+                with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as docx_temp:
+                    docx_temp.write(docx_content)
+                    docx_path = docx_temp.name
+                    temp_files.append(docx_path)
+                
+                # Convert to PDF using LibreOffice
+                pdf_path = docx_path.replace('.docx', '.pdf')
+                
+                if platform.system() == "Windows":
+                    libreoffice_path = r"C:\Program Files\LibreOffice\program\soffice.exe"
+                    if not os.path.exists(libreoffice_path):
+                        libreoffice_path = r"C:\Program Files (x86)\LibreOffice\program\soffice.exe"
+                else:
+                    libreoffice_path = "soffice"
+                
+                cmd = [
+                    libreoffice_path,
+                    "--headless",
+                    "--convert-to", "pdf",
+                    "--outdir", os.path.dirname(docx_path),
+                    docx_path
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                
+                if result.returncode != 0:
+                    raise Exception(f"LibreOffice conversion failed for {filename}: {result.stderr}")
+                
+                if not os.path.exists(pdf_path):
+                    raise Exception(f"PDF file was not created for {filename}")
+                
+                pdf_files.append(pdf_path)
+                temp_files.append(pdf_path)
+            
+            # Merge PDFs using PyPDF2 or similar
+            try:
+                from PyPDF2 import PdfMerger
+                
+                merger = PdfMerger()
+                
+                for pdf_path in pdf_files:
+                    merger.append(pdf_path)
+                
+                # Save merged PDF to temporary file
+                merged_pdf_path = os.path.join(tempfile.gettempdir(), f'Complete_ISSP_{year_range}.pdf')
+                merger.write(merged_pdf_path)
+                merger.close()
+                
+                # Read the merged PDF
+                with open(merged_pdf_path, 'rb') as pdf_file:
+                    pdf_content = pdf_file.read()
+                
+                # Clean up temporary files
+                for temp_file in temp_files:
+                    try:
+                        os.unlink(temp_file)
+                    except:
+                        pass
+                
+                try:
+                    os.unlink(merged_pdf_path)
+                except:
+                    pass
+                
+                # Return merged PDF
+                return StreamingResponse(
+                    io.BytesIO(pdf_content),
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename=Complete_ISSP_{year_range}.pdf"}
+                )
+                
+            except ImportError:
+                # Fallback: return the first PDF if PyPDF2 is not available
+                with open(pdf_files[0], 'rb') as pdf_file:
+                    pdf_content = pdf_file.read()
+                
+                # Clean up temporary files
+                for temp_file in temp_files:
+                    try:
+                        os.unlink(temp_file)
+                    except:
+                        pass
+                
+                return StreamingResponse(
+                    io.BytesIO(pdf_content),
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename=part_i_{year_range}.pdf"}
+                )
+                
+        except subprocess.TimeoutExpired:
+            raise Exception("PDF conversion timed out")
+        except FileNotFoundError:
+            raise Exception("LibreOffice not found. Please install LibreOffice.")
+            
+    except Exception as e:
+        logger.error(f"Error converting storage DOCX to PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to convert storage DOCX to PDF: {str(e)}")
 
 @app.post('/delete-user')
 async def delete_user_endpoint(data: dict = Body(...)):
