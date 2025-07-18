@@ -49,7 +49,6 @@ class _MergeDashboardState extends State<MergeDashboard> {
           'missing': <String>[],
           'notFinalized': <String>[],
         };
-        // Prepare all futures for this part
         final futures = sections[part]!.map((section) =>
           firestore
             .collection('issp_documents')
@@ -89,7 +88,6 @@ class _MergeDashboardState extends State<MergeDashboard> {
               'hasDocument': hasDocument,
               'ready': isFinalized && hasDocument,
             };
-            // Only add to notFinalized if isFinalized is explicitly false
             if (data.containsKey('isFinalized') && data['isFinalized'] == false) {
               (newStatus[part]!['notFinalized'] as List<String>).add(section);
               newStatus[part]!['ready'] = false;
@@ -158,12 +156,10 @@ class _MergeDashboardState extends State<MergeDashboard> {
         setState(() => _isMerging = false);
         return;
       }
-      // Prepare multipart request
       final mergeRequest = http.MultipartRequest(
         'POST',
         Uri.parse('${Config.serverUrl}/merge-all-parts'),
       );
-      // Map filenames to backend field names
       final partKeys = ['i', 'ii', 'iii', 'iv', 'v'];
       for (int idx = 0; idx < mergedFilenames.length; idx++) {
         final filename = mergedFilenames[idx];
@@ -320,7 +316,6 @@ class _MergeDashboardState extends State<MergeDashboard> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Accent bar
           Container(
             width: isSmallScreen ? 5 : 8,
             decoration: BoxDecoration(
@@ -493,7 +488,6 @@ class _MergeDashboardState extends State<MergeDashboard> {
       ),
     );
 
-    // Add hover effect for web
     return MouseRegion(
       onEnter: (_) => setState(() {}),
       onExit: (_) => setState(() {}),

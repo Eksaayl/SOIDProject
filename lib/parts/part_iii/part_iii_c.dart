@@ -95,7 +95,6 @@ class _PartIIICState extends State<PartIIIC> {
     for (int i = 0; i < 3; i++) {
       _logframeControllers[i]['hierarchy']!.text = _defaultHierarchy[i];
     }
-    // Add listeners for unsaved changes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _addListenersToControllers();
     });
@@ -110,14 +109,12 @@ class _PartIIICState extends State<PartIIIC> {
   }
 
   void _addListenersToControllers() {
-    // Add listeners to main logframe controllers
     for (final controller in _logframeControllers) {
       for (final textController in controller.values) {
         textController.addListener(_markUnsaved);
       }
     }
     
-    // Add listeners to project controllers
     for (final project in _projects) {
       for (final row in project.intermediateRows) {
         for (final textController in row.values) {
@@ -214,9 +211,7 @@ class _PartIIICState extends State<PartIIIC> {
       );
     } finally {
       setState(() => _loading = false);
-      // Add listeners to controllers after loading
       _addListenersToControllers();
-      // Reset unsaved changes flag after loading
       setState(() {
         _hasUnsavedChanges = false;
       });
@@ -521,7 +516,6 @@ class _PartIIICState extends State<PartIIIC> {
         setState(() {
         _projects.add(LogframeProject());
       });
-      // Add listeners to new project controllers
       final newProject = _projects.last;
       for (final row in newProject.intermediateRows) {
         for (final textController in row.values) {
@@ -557,7 +551,6 @@ class _PartIIICState extends State<PartIIIC> {
     setState(() {
       _projects.add(LogframeProject(subRole: selectedSubRole));
     });
-    // Add listeners to new project controllers
     final newProject = _projects.last;
     for (final row in newProject.intermediateRows) {
       for (final textController in row.values) {

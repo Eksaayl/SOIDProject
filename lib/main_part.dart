@@ -51,12 +51,11 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
     {'label': 'Part III', 'content': const Part3()},
     {'label': 'Part IV', 'content': const Part4()},
     {'label': 'Part V', 'content': const Part5()},
-    {'label': 'Merge All', 'content': null}, // Will be handled specially
+    {'label': 'Merge All', 'content': null}, 
   ];
 
   List<Map<String, dynamic>> _notifications = [];
 
-  // Merge Dashboard Data
   Map<String, Map<String, dynamic>> _partStatus = {};
   bool _isLoadingStatus = true;
 
@@ -726,7 +725,6 @@ class _HorizontalTabsPageState extends _HorizontalTabsPageStateBase with TickerP
                   };
                 }).toList();
                 
-                // Handle merge dashboard tab
                 if (_selectedIndex == 5) {
                   return const MergeDashboard();
                 }

@@ -362,7 +362,6 @@ class _PartVDFormPageState extends State<PartVDFormPage> {
       final templateBytes = await templateRef.getData();
 
       if (templateBytes == null) {
-        // handle error
         return;
       }
 
@@ -385,7 +384,7 @@ class _PartVDFormPageState extends State<PartVDFormPage> {
       });
 
     } catch (e) {
-      // handle error
+      print('❌ DEBUG: Error type: ${e.runtimeType}');
     }
   }
 

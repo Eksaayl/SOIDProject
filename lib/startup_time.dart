@@ -110,10 +110,8 @@ class _StartupTimePageState extends State<StartupTimePage> {
         ),
       );
 
-      // Check if selected option is 2021-2023 or 2024-2026
       final selectedTimeRange = _timeRanges[_selected!];
       if (selectedTimeRange == '2021-2023' || selectedTimeRange == '2024-2026') {
-        // Navigate to finished ISSP page (regardless of fromSettings)
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -121,11 +119,9 @@ class _StartupTimePageState extends State<StartupTimePage> {
           ),
         );
       } else {
-        // For other time ranges, handle based on fromSettings
         if (widget.fromSettings) {
           Navigator.pop(context);
         } else {
-          // Navigate to regular landing page for other time ranges
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const Landing()),

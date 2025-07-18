@@ -300,7 +300,6 @@ class _Part5State extends State<Part5> {
       
       final fileName = 'Part_V_Complete_${_yearRange}.docx';
       
-      // Upload merged file to Firebase Storage for dashboard use
       final mergedStoragePath = '$_yearRange/part_v_merged.docx';
       final mergedRef = _storage.ref().child(mergedStoragePath);
       await mergedRef.putData(mergedBytes);

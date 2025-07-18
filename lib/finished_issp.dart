@@ -3,7 +3,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_saver/file_saver.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:http/http.dart' as http;
 import 'dart:io';
+import 'dart:typed_data';
 import 'startup_time.dart';
 
 class FinishedISSPPage extends StatefulWidget {
@@ -35,6 +37,9 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
     try {
       final storage = FirebaseStorage.instance;
       
+      print('🔍 DEBUG: Year Range = ${widget.yearRange}');
+      print('🔍 DEBUG: Year Code = ${widget._yearCode}');
+      
       String fileName;
       if (widget.yearRange == '2021-2023') {
         fileName = '2021 - 2023 ISSP.pdf';
@@ -44,22 +49,86 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
         throw Exception('Invalid year range');
       }
       
-      // Use the same pattern as other parts
+      print('🔍 DEBUG: File Name = $fileName');
+      
       final pdfRef = storage.ref().child('${widget._yearCode}/compiled.pdf');
       
-      final pdfBytes = await pdfRef.getData();
+      print('🔍 DEBUG: Firebase Storage Path = ${widget._yearCode}/compiled.pdf');
+      print('🔍 DEBUG: Full Storage Reference = ${pdfRef.fullPath}');
+      
+      try {
+        final metadata = await pdfRef.getMetadata();
+        print('🔍 DEBUG: File metadata found:');
+        print('  - Name: ${metadata.name}');
+        print('  - Size: ${metadata.size} bytes');
+        print('  - Content Type: ${metadata.contentType}');
+        print('  - Updated: ${metadata.updated}');
+      } catch (metadataError) {
+        print('❌ DEBUG: Failed to get metadata: $metadataError');
+      }
+      
+      print('🔍 DEBUG: Starting file download...');
+      
+      Uint8List? pdfBytes;
+      
+      try {
+        print('🔍 DEBUG: Attempting direct download...');
+        pdfBytes = await pdfRef.getData();
+        if (pdfBytes != null) {
+          print('🔍 DEBUG: Direct download successful!');
+        }
+      } catch (directError) {
+        print('❌ DEBUG: Direct download failed: $directError');
+      }
+      
+      if (pdfBytes == null) {
+        try {
+          print('🔍 DEBUG: Attempting download with max size limit...');
+          pdfBytes = await pdfRef.getData(1024 * 1024 * 50); 
+          if (pdfBytes != null) {
+            print('🔍 DEBUG: Download with size limit successful!');
+          }
+        } catch (sizeLimitError) {
+          print('❌ DEBUG: Download with size limit failed: $sizeLimitError');
+        }
+      }
+      
+      if (pdfBytes == null) {
+        try {
+          print('🔍 DEBUG: Attempting download via URL...');
+          final downloadUrl = await pdfRef.getDownloadURL();
+          print('🔍 DEBUG: Download URL obtained: $downloadUrl');
+          
+          final response = await http.get(Uri.parse(downloadUrl));
+          if (response.statusCode == 200) {
+            pdfBytes = response.bodyBytes;
+            print('🔍 DEBUG: Download via URL successful!');
+          } else {
+            print('❌ DEBUG: HTTP download failed with status: ${response.statusCode}');
+          }
+        } catch (urlError) {
+          print('❌ DEBUG: Download via URL failed: $urlError');
+        }
+      }
       
       if (pdfBytes != null) {
+        print('🔍 DEBUG: File downloaded successfully!');
+        print('🔍 DEBUG: File size: ${pdfBytes.length} bytes');
+        
         if (kIsWeb) {
+          print('🔍 DEBUG: Saving file on web platform...');
           await FileSaver.instance.saveFile(
             name: fileName,
             bytes: pdfBytes,
             mimeType: MimeType.pdf,
           );
+          print('🔍 DEBUG: File saved successfully on web');
         } else {
+          print('🔍 DEBUG: Saving file on mobile platform...');
           final directory = await getApplicationDocumentsDirectory();
           final file = File('${directory.path}/$fileName');
           await file.writeAsBytes(pdfBytes);
+          print('🔍 DEBUG: File saved to: ${file.path}');
         }
         
         if (mounted) {
@@ -71,6 +140,7 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
           );
         }
       } else {
+        print('❌ DEBUG: File download returned null bytes');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -82,6 +152,9 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
       }
     } catch (e) {
       print('❌ Download error: $e');
+      print('❌ DEBUG: Error type: ${e.runtimeType}');
+      print('❌ DEBUG: Error stack trace:');
+      print(e);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -125,7 +198,6 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Icon
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -141,7 +213,6 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
               
               const SizedBox(height: 32),
               
-              // Title
               const Text(
                 'ISSP Completed',
                 style: TextStyle(
@@ -154,7 +225,6 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
               
               const SizedBox(height: 16),
               
-              // Message
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -181,7 +251,6 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
               
               const SizedBox(height: 32),
               
-              // Download Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -217,7 +286,6 @@ class _FinishedISSPPageState extends State<FinishedISSPPage> {
               
               const SizedBox(height: 24),
               
-              // Additional Info
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

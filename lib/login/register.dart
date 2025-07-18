@@ -51,7 +51,6 @@ class _RegisterPageState extends State<RegisterPage> {
         _showUsernameHelp = _usernameCtrl.text.isNotEmpty;
       });
     });
-    // If initialPhotoUrl is provided, try to fetch and set _pickedImage
     if (widget.initialPhotoUrl.isNotEmpty) {
       _fetchInitialPhoto(widget.initialPhotoUrl);
     }
@@ -102,11 +101,9 @@ class _RegisterPageState extends State<RegisterPage> {
           .child('profile_photos')
           .child('$uid.jpg');
       
-      // Upload the image bytes
       final uploadTask = storageRef.putData(_pickedImage!);
       final snapshot = await uploadTask;
       
-      // Get the download URL
       final downloadURL = await snapshot.ref.getDownloadURL();
       debugPrint('✅ Profile photo uploaded: $downloadURL');
       
@@ -120,7 +117,7 @@ class _RegisterPageState extends State<RegisterPage> {
   void _showTermsAndConditions() {
     showDialog(
       context: context,
-      barrierDismissible: true, // Allow clicking outside to dismiss
+      barrierDismissible: true,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
@@ -141,7 +138,6 @@ class _RegisterPageState extends State<RegisterPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -193,7 +189,6 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
               ),
               
-              // Content
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
@@ -261,7 +256,6 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
       ),
     ).then((_) {
-      // This runs when dialog is dismissed (by any means)
       setState(() {
         _viewedTerms = true;
       });
@@ -271,7 +265,7 @@ class _RegisterPageState extends State<RegisterPage> {
   void _showPrivacyPolicy() {
     showDialog(
       context: context,
-      barrierDismissible: true, // Allow clicking outside to dismiss
+      barrierDismissible: true, 
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
@@ -292,7 +286,6 @@ class _RegisterPageState extends State<RegisterPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -344,7 +337,6 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
               ),
               
-              // Content
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
@@ -379,7 +371,6 @@ class _RegisterPageState extends State<RegisterPage> {
                       
                       const SizedBox(height: 20),
                       
-                      // Data Privacy Act Section
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -477,7 +468,6 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
     
-    // Check if terms are accepted
     if (!_acceptedTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -500,7 +490,6 @@ class _RegisterPageState extends State<RegisterPage> {
     final usernameToCheck = _usernameCtrl.text.trim();
     final emailToCheck = _emailCtrl.text.trim();
     
-    // Check for username duplicates (case-insensitive)
     final existingUsers = await _firestore.collection('users').get();
     final existingUsernames = existingUsers.docs
         .map((doc) => doc.data()['username'] as String?)
@@ -518,7 +507,6 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
     
-    // Check for email duplicates (case-insensitive)
     if (!widget.isGoogleSignIn) {
       final existingEmails = existingUsers.docs
           .map((doc) => doc.data()['email'] as String?)
@@ -544,7 +532,6 @@ class _RegisterPageState extends State<RegisterPage> {
       }
 
       if (widget.isGoogleSignIn) {
-        // For Google sign-in, just update Firestore and mark profileComplete
         final user = _auth.currentUser;
         if (user == null) throw Exception('No authenticated user');
         await _firestore.collection('users').doc(user.uid).set({
@@ -568,7 +555,6 @@ class _RegisterPageState extends State<RegisterPage> {
         return;
       }
 
-      // For email/password sign-up
       final cred = await _auth.createUserWithEmailAndPassword(
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
@@ -722,7 +708,6 @@ class _RegisterPageState extends State<RegisterPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Image preview and take photo button
                   if (_pickedImage != null)
                     CircleAvatar(
                       radius: 48,

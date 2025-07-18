@@ -263,43 +263,61 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   Widget _buildStatusChip(String status) {
     Color color;
     IconData icon;
+    Color backgroundColor;
+    Color borderColor;
 
     switch (status.toLowerCase()) {
       case 'pending':
-        color = Colors.orange;
-        icon = Icons.pending;
+        color = const Color(0xFFF59E0B);
+        backgroundColor = const Color(0xFFFFFBEB);
+        borderColor = const Color(0xFFFCD34D);
+        icon = Icons.schedule;
         break;
       case 'approved':
-        color = Colors.green;
+        color = const Color(0xFF059669);
+        backgroundColor = const Color(0xFFECFDF5);
+        borderColor = const Color(0xFF6EE7B7);
         icon = Icons.check_circle;
         break;
       case 'rejected':
-        color = Colors.red;
+        color = const Color(0xFFDC2626);
+        backgroundColor = const Color(0xFFFEF2F2);
+        borderColor = const Color(0xFFFCA5A5);
         icon = Icons.cancel;
         break;
       default:
-        color = Colors.grey;
+        color = const Color(0xFF6B7280);
+        backgroundColor = const Color(0xFFF9FAFB);
+        borderColor = const Color(0xFFD1D5DB);
         icon = Icons.help;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: borderColor, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: color),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           Text(
             status,
             style: TextStyle(
               color: color,
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
             ),
           ),
         ],
@@ -322,137 +340,227 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            const Color(0xFFF8FAFC),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: const Color(0xff021e84).withOpacity(0.08),
+            spreadRadius: 0,
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.06),
+            spreadRadius: 0,
+            blurRadius: 40,
+            offset: const Offset(0, 16),
           ),
         ],
         border: Border.all(
-          color: const Color(0xff021e84).withOpacity(0.1),
-          width: 1,
+          color: const Color(0xff021e84).withOpacity(0.08),
+          width: 1.5,
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xff021e84), Color(0xff1e40af)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withOpacity(0.9),
+              Colors.white.withOpacity(0.7),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xff021e84), Color(0xff1e40af)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xff021e84).withOpacity(0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    borderRadius: BorderRadius.circular(12),
+                    child: const Icon(
+                      Icons.description,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.description,
-                    color: Colors.white,
-                    size: 24,
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          sectionName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1A202C),
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE2E8F0),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.person_outline,
+                                    size: 14,
+                                    color: const Color(0xFF4A5568),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    createdBy,
+                                    style: const TextStyle(
+                                      color: Color(0xFF4A5568),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (submittedAt != null) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.schedule_outlined,
+                                size: 14,
+                                color: const Color(0xFF718096),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatDate(submittedAt.toDate()),
+                                style: const TextStyle(
+                                  color: Color(0xFF718096),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  _buildStatusChip(status),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7FAFC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFE2E8F0),
+                    width: 1,
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        sectionName,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2D3748),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Submitted by: $createdBy',
-                        style: const TextStyle(
-                          color: Color(0xFF4A5568),
-                          fontSize: 14,
-                        ),
-                      ),
-                      if (submittedAt != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'Submitted: ${_formatDate(submittedAt.toDate())}',
-                          style: const TextStyle(
-                            color: Color(0xFF718096),
-                            fontSize: 12,
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 120,
+                          child: _buildActionButton(
+                            icon: Icons.download,
+                            label: 'Download',
+                            color: Colors.green,
+                            onPressed: () => _downloadDocument(context, context.read<SelectionModel>().yearRange ?? '2729', doc.id),
                           ),
                         ),
                       ],
+                    ),
+                    if (screening == true) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        height: 1,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.transparent,
+                              const Color(0xFFE2E8F0),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 120,
+                            child: _buildActionButton(
+                              icon: Icons.cancel,
+                              label: 'Reject',
+                              color: Colors.red,
+                              onPressed: () => _showRejectionDialog(context, doc),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          SizedBox(
+                            width: 120,
+                            child: _buildActionButton(
+                              icon: Icons.check_circle,
+                              label: 'Approve',
+                              color: Colors.green,
+                              onPressed: () async {
+                                await _updateScreeningStatus(context, doc, true);
+                                if (!isFinalized) {
+                                  await _finalizeSection(context, doc.id, sectionName);
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
-                _buildStatusChip(status),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icons.visibility,
-                    label: 'Preview',
-                    color: const Color(0xff021e84),
-                    onPressed: () => _viewDocument(context, context.read<SelectionModel>().yearRange ?? '2729', doc.id),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icons.download,
-                    label: 'Download',
-                    color: Colors.green,
-                    onPressed: () => _downloadDocument(context, context.read<SelectionModel>().yearRange ?? '2729', doc.id),
-                  ),
-                ),
-              ],
-            ),
-            if (screening == true) ...[
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.cancel,
-                      label: 'Reject',
-                      color: Colors.red,
-                      onPressed: () => _showRejectionDialog(context, doc),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.check_circle,
-                      label: 'Approve',
-                      color: Colors.green,
-                      onPressed: () async {
-                        await _updateScreeningStatus(context, doc, true);
-                        if (!isFinalized) {
-                          await _finalizeSection(context, doc.id, sectionName);
-                        }
-                      },
-                    ),
-                  ),
-                ],
               ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -471,11 +579,11 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
             color: color.withOpacity(0.3),
-            blurRadius: 8,
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
@@ -486,21 +594,21 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
           ),
           elevation: 0,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18),
-            const SizedBox(width: 8),
+            Icon(icon, size: 16),
+            const SizedBox(width: 6),
             Text(
               label,
               style: const TextStyle(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -531,7 +639,6 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Search Bar
           TextField(
             controller: _searchController,
             onChanged: (value) {
@@ -566,7 +673,6 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
             ),
           ),
           const SizedBox(height: 16),
-          // Filter Chips
           Row(
             children: [
               const Text(
@@ -652,18 +758,19 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 24,
-              color: Colors.white,
+              color: Colors.black,
             ),
           ),
           centerTitle: true,
           elevation: 0,
-          backgroundColor: const Color(0xff021e84),
+          backgroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: Colors.black),
           bottom: TabBar(
             controller: _tabController,
-            indicatorColor: Colors.white,
+            indicatorColor: const Color(0xff021e84),
             indicatorWeight: 3,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
+            labelColor: const Color(0xff021e84),
+            unselectedLabelColor: Colors.grey,
             tabs: const [
               Tab(text: 'Pending Review'),
               Tab(text: 'All Sections'),
@@ -1075,7 +1182,6 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Future<void> _downloadSelectedSections() async {
-    // Implementation for batch download
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Downloading ${_selectedSections.length} sections...'),
@@ -1085,7 +1191,6 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Future<void> _approveSelectedSections() async {
-    // Implementation for batch approval
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Approving ${_selectedSections.length} sections...'),
@@ -1095,7 +1200,6 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
   }
 
   Future<void> _rejectSelectedSections() async {
-    // Implementation for batch rejection
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Rejecting ${_selectedSections.length} sections...'),

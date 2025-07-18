@@ -103,7 +103,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
     if (confirm != true) return;
 
-    // Show loading indicator
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -122,28 +121,22 @@ class _ProfilePageState extends State<ProfilePage> {
             .child('profile_photos')
             .child('${user.uid}.jpg');
         
-        // Upload the image bytes
         final uploadTask = storageRef.putData(_pickedImage!);
         final snapshot = await uploadTask;
         
-        // Get the download URL
         final downloadURL = await snapshot.ref.getDownloadURL();
         
-        // Update user document with profile picture URL
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
             .update({'profilePictureURL': downloadURL});
 
-        // Close loading dialog
         Navigator.of(context).pop();
 
-        // Clear the picked image
         setState(() {
           _pickedImage = null;
         });
 
-        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Profile picture updated successfully!'),
@@ -152,10 +145,8 @@ class _ProfilePageState extends State<ProfilePage> {
         );
       }
     } catch (e) {
-      // Close loading dialog
       Navigator.of(context).pop();
       
-      // Show error message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to upload profile picture: $e'),
@@ -291,7 +282,6 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 24), 
 
-            // Change Profile Picture Section
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -401,7 +391,6 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
 
-            // Change Username Section
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -456,7 +445,6 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
 
-            // Change Division/Service Section
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),

@@ -71,7 +71,6 @@ class _PartIIIBState extends State<PartIIIB> {
         .doc('III.B');
     _loadContent();
     _fetchUserRoleAndCheckBothSections();
-    // Add listeners for unsaved changes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       for (final project in projectControllers) {
         project.name.addListener(_markUnsaved);
@@ -177,7 +176,6 @@ class _PartIIIBState extends State<PartIIIB> {
               submittedBy: project['submitted_by'] ?? '',
             ));
           }
-          // Add listeners for unsaved changes
           for (final project in projectControllers) {
             project.name.addListener(_markUnsaved);
             project.objectives.addListener(_markUnsaved);
@@ -195,7 +193,6 @@ class _PartIIIBState extends State<PartIIIB> {
     }
     setState(() {});
     _AddBlankProject();
-    // Add listeners for unsaved changes to new blank project
     for (final project in projectControllers) {
       project.name.addListener(_markUnsaved);
       project.objectives.addListener(_markUnsaved);

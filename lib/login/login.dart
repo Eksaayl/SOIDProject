@@ -162,7 +162,6 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Signed in with Google!')),
       );
-      // Check Firestore for profile completion
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       final profileComplete = userDoc.data()?['profileComplete'] == true;
       if (!profileComplete) {

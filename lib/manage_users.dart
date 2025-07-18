@@ -81,7 +81,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: const BoxDecoration(
@@ -141,13 +140,11 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                 ),
               ),
               
-              // Content
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(32),
                   child: Column(
                     children: [
-                      // Profile Picture Container
                       Container(
                         width: 280,
                         height: 280,
@@ -245,7 +242,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                                         );
                                       },
                                     ),
-                                    // Overlay gradient for better text visibility
                                     Positioned(
                                       bottom: 0,
                                       left: 0,
@@ -313,7 +309,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                       
                       const SizedBox(height: 24),
                       
-                      // User Info Card
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(20),
@@ -400,7 +395,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                 ),
               ),
               
-              // Footer
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -450,7 +444,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
     return value;
   }
 
-  // Helper to read sub_roles as a string regardless of Firestore type
   String subRolesToString(dynamic subRoles) {
     if (subRoles == null) return '';
     if (subRoles is String) return subRoles;
@@ -550,7 +543,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header Section
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -609,7 +601,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                         ),
                         const SizedBox(height: 24),
                         
-                        // Search Bar
                         Container(
                           constraints: const BoxConstraints(maxWidth: 400),
                           child: TextField(
@@ -661,7 +652,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Content Section
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
@@ -802,7 +792,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                 ),
                 const SizedBox(height: 20),
                 
-                // Role Management
                 Row(
                   children: [
                     Expanded(
@@ -950,7 +939,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
   Widget _buildDesktopLayout(List<DocumentSnapshot> pagedDocs, List<DocumentSnapshot> docs) {
     return Column(
       children: [
-        // Table Header
         Container(
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
           decoration: const BoxDecoration(
@@ -1036,7 +1024,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                     ),
                     child: Row(
                       children: [
-                        // Photo Button
                         Expanded(
                           flex: 1,
                           child: ElevatedButton.icon(
@@ -1059,7 +1046,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                         
                         const SizedBox(width: 16),
                         
-                        // Username
                         Expanded(
                           flex: 2,
                           child: Text(
@@ -1071,7 +1057,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                           ),
                         ),
                         
-                        // Email
                         Expanded(
                           flex: 3,
                           child: Text(
@@ -1082,7 +1067,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                           ),
                         ),
                         
-                        // Created At
                         Expanded(
                           flex: 2,
                           child: Text(
@@ -1094,7 +1078,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                           ),
                         ),
                         
-                        // Role Dropdown
                         Expanded(
                           flex: 1,
                           child: Container(
@@ -1137,7 +1120,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                         
                         const SizedBox(width: 16),
                         
-                        // Sub-Role Dropdown
                         Expanded(
                           flex: 1,
                           child: Container(
@@ -1180,7 +1162,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                         
                         const SizedBox(width: 16),
                         
-                        // Save Button
                         Expanded(
                           flex: 1,
                           child: Row(
@@ -1252,7 +1233,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                                         builder: (context) => const Center(child: CircularProgressIndicator()),
                                       );
                                       final success = await _deleteUserFromBackend(email);
-                                      Navigator.of(context).pop(); // Remove loading dialog
+                                      Navigator.of(context).pop(); 
                                       if (success) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           const SnackBar(
@@ -1284,7 +1265,6 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
           ),
         ),
         
-        // Pagination
         Container(
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
           decoration: BoxDecoration(
