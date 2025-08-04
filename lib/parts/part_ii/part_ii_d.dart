@@ -11,7 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart' show rootBundle;
 import '../../config.dart';
-import 'package:test_project/main_part.dart';
+import '../../homepage.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';

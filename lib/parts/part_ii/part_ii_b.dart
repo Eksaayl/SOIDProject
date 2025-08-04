@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import '../../main_part.dart';
+import '../../homepage.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';

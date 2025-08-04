@@ -11,7 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../main_part.dart';
+import '../../homepage.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';

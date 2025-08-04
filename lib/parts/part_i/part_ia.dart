@@ -11,7 +11,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:test_project/main_part.dart';
+import '../../homepage.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import 'package:http/http.dart' as http;
