@@ -12,7 +12,14 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 
 class MergeDashboard extends StatefulWidget {
-  const MergeDashboard({Key? key}) : super(key: key);
+  final VoidCallback? onMergeRequested;
+  final VoidCallback? onRefreshRequested;
+  
+  const MergeDashboard({
+    Key? key, 
+    this.onMergeRequested,
+    this.onRefreshRequested,
+  }) : super(key: key);
 
   @override
   State<MergeDashboard> createState() => _MergeDashboardState();
@@ -26,6 +33,10 @@ class _MergeDashboardState extends State<MergeDashboard> {
   @override
   void initState() {
     super.initState();
+    _loadPartStatus();
+  }
+
+  void triggerRefresh() {
     _loadPartStatus();
   }
 
@@ -220,59 +231,114 @@ class _MergeDashboardState extends State<MergeDashboard> {
     final theme = Theme.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
+    final isTinyScreen = screenWidth < 400;
+    
     return Container(
       color: const Color(0xFFF7FAFC),
       child: CustomScrollView(
         slivers: [
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _DashboardHeader(
-              allReady: allReady,
-              isMerging: _isMerging,
-              onMerge: allReady && !_isMerging ? _mergeAllParts : null,
-              onRefresh: _loadPartStatus,
-              isSmallScreen: isSmallScreen,
-            ),
-          ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 4 : 16, vertical: isSmallScreen ? 4 : 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: isTinyScreen ? 8 : (isSmallScreen ? 12 : 16), 
+                vertical: isTinyScreen ? 8 : (isSmallScreen ? 12 : 16)
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(height: isSmallScreen ? 8 : 16),
-                  Text(
-                    'Part Status',
-                    style: TextStyle(
-                      fontSize: isSmallScreen ? 16 : 20,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF2D3748),
+                  SizedBox(height: isTinyScreen ? 4 : (isSmallScreen ? 8 : 16)),
+                  
+                  // Compact header for small screens
+                  if (isTinyScreen) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.dashboard,
+                          size: 20,
+                          color: const Color(0xFF2D3748),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Merge Status',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF2D3748),
+                            ),
+                          ),
+                        ),
+                        if (allReady)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.green, width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle, size: 14, color: Colors.green),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Ready',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                  SizedBox(height: isSmallScreen ? 8 : 16),
+                  ] else ...[
+                    Text(
+                      'Part Status',
+                      style: TextStyle(
+                        fontSize: isSmallScreen ? 16 : 20,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF2D3748),
+                      ),
+                    ),
+                  ],
+                  
+                  SizedBox(height: isTinyScreen ? 8 : (isSmallScreen ? 12 : 16)),
+                  
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      int crossAxisCount = isSmallScreen ? 1 : 2;
-                      if (!isSmallScreen && constraints.maxWidth > 1000) crossAxisCount = 3;
+                      int crossAxisCount = 1;
+                      if (!isSmallScreen) {
+                        crossAxisCount = constraints.maxWidth > 1000 ? 3 : 2;
+                      }
+                      
                       return GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
-                          childAspectRatio: isSmallScreen ? 1.1 : 1.5,
-                          crossAxisSpacing: isSmallScreen ? 10 : 24,
-                          mainAxisSpacing: isSmallScreen ? 10 : 24,
+                          childAspectRatio: isTinyScreen ? 0.8 : (isSmallScreen ? 1.1 : 1.5),
+                          crossAxisSpacing: isTinyScreen ? 6 : (isSmallScreen ? 10 : 24),
+                          mainAxisSpacing: isTinyScreen ? 6 : (isSmallScreen ? 10 : 24),
                         ),
                         itemCount: _partStatus.length,
                         itemBuilder: (context, index) {
                           final partName = _partStatus.keys.elementAt(index);
                           final partData = _partStatus[partName]!;
-                          return _buildStatusCard(partName, partData, isSmallScreen: isSmallScreen);
+                          return _buildStatusCard(
+                            partName, 
+                            partData, 
+                            isSmallScreen: isSmallScreen,
+                            isTinyScreen: isTinyScreen,
+                          );
                         },
                       );
                     },
                   ),
-                  SizedBox(height: isSmallScreen ? 16 : 32),
+                  
+                  SizedBox(height: isTinyScreen ? 12 : (isSmallScreen ? 16 : 32)),
                 ],
               ),
             ),
@@ -282,7 +348,7 @@ class _MergeDashboardState extends State<MergeDashboard> {
     );
   }
 
-  Widget _buildStatusCard(String partName, Map<String, dynamic> partData, {bool isSmallScreen = false}) {
+  Widget _buildStatusCard(String partName, Map<String, dynamic> partData, {bool isSmallScreen = false, bool isTinyScreen = false}) {
     final sections = (partData['sections'] as Map).cast<String, Map<String, dynamic>>();
     final ready = partData['ready'] as bool;
     final missing = partData['missing'] as List<String>;
@@ -295,54 +361,54 @@ class _MergeDashboardState extends State<MergeDashboard> {
 
     Widget card = AnimatedContainer(
       duration: const Duration(milliseconds: 180),
-      margin: EdgeInsets.all(isSmallScreen ? 4 : 8),
+      margin: EdgeInsets.all(isTinyScreen ? 2 : (isSmallScreen ? 4 : 8)),
       padding: const EdgeInsets.all(0),
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(isSmallScreen ? 10 : 16),
+        borderRadius: BorderRadius.circular(isTinyScreen ? 8 : (isSmallScreen ? 10 : 16)),
         boxShadow: [
           BoxShadow(
             color: Colors.grey.withOpacity(0.13),
             spreadRadius: 2,
-            blurRadius: isSmallScreen ? 8 : 16,
+            blurRadius: isTinyScreen ? 6 : (isSmallScreen ? 8 : 16),
             offset: const Offset(0, 4),
           ),
         ],
         border: Border.all(
           color: borderColor,
-          width: isSmallScreen ? 1.5 : 2.5,
+          width: isTinyScreen ? 1 : (isSmallScreen ? 1.5 : 2.5),
         ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            width: isSmallScreen ? 5 : 8,
+            width: isTinyScreen ? 3 : (isSmallScreen ? 5 : 8),
             decoration: BoxDecoration(
               color: accentColor,
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(isSmallScreen ? 10 : 16),
-                bottomLeft: Radius.circular(isSmallScreen ? 10 : 16),
+                topLeft: Radius.circular(isTinyScreen ? 8 : (isSmallScreen ? 10 : 16)),
+                bottomLeft: Radius.circular(isTinyScreen ? 8 : (isSmallScreen ? 10 : 16)),
               ),
             ),
           ),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.all(isSmallScreen ? 10 : 20),
+              padding: EdgeInsets.all(isTinyScreen ? 8 : (isSmallScreen ? 10 : 20)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.all(isSmallScreen ? 6 : 10),
+                        padding: EdgeInsets.all(isTinyScreen ? 4 : (isSmallScreen ? 6 : 10)),
                         decoration: BoxDecoration(
                           color: accentBg,
-                          borderRadius: BorderRadius.circular(isSmallScreen ? 8 : 12),
+                          borderRadius: BorderRadius.circular(isTinyScreen ? 6 : (isSmallScreen ? 8 : 12)),
                           boxShadow: [
                             BoxShadow(
                               color: accentColor.withOpacity(0.18),
-                              blurRadius: isSmallScreen ? 6 : 12,
+                              blurRadius: isTinyScreen ? 4 : (isSmallScreen ? 6 : 12),
                               offset: const Offset(0, 2),
                             ),
                           ],
@@ -350,10 +416,10 @@ class _MergeDashboardState extends State<MergeDashboard> {
                         child: Icon(
                           ready ? Icons.check_circle : Icons.warning,
                           color: accentColor,
-                          size: isSmallScreen ? 22 : 32,
+                          size: isTinyScreen ? 16 : (isSmallScreen ? 22 : 32),
                         ),
                       ),
-                      SizedBox(width: isSmallScreen ? 8 : 16),
+                      SizedBox(width: isTinyScreen ? 6 : (isSmallScreen ? 8 : 16)),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,7 +427,7 @@ class _MergeDashboardState extends State<MergeDashboard> {
                             Text(
                               partName,
                               style: TextStyle(
-                                fontSize: isSmallScreen ? 16 : 22,
+                                fontSize: isTinyScreen ? 14 : (isSmallScreen ? 16 : 22),
                                 fontWeight: FontWeight.w800,
                                 color: const Color(0xFF2D3748),
                               ),
@@ -369,7 +435,7 @@ class _MergeDashboardState extends State<MergeDashboard> {
                             Text(
                               ready ? 'Ready to merge' : 'Not ready',
                               style: TextStyle(
-                                fontSize: isSmallScreen ? 12 : 15,
+                                fontSize: isTinyScreen ? 10 : (isSmallScreen ? 12 : 15),
                                 color: accentColor,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -379,10 +445,10 @@ class _MergeDashboardState extends State<MergeDashboard> {
                       ),
                     ],
                   ),
-                  SizedBox(height: isSmallScreen ? 10 : 18),
+                  SizedBox(height: isTinyScreen ? 6 : (isSmallScreen ? 10 : 18)),
                   Wrap(
-                    spacing: isSmallScreen ? 6 : 10,
-                    runSpacing: isSmallScreen ? 6 : 10,
+                    spacing: isTinyScreen ? 4 : (isSmallScreen ? 6 : 10),
+                    runSpacing: isTinyScreen ? 4 : (isSmallScreen ? 6 : 10),
                     children: sections.entries.map((entry) {
                       final sectionName = entry.key;
                       final sectionData = entry.value;
@@ -405,15 +471,18 @@ class _MergeDashboardState extends State<MergeDashboard> {
                         chipIcon = Icons.error;
                       }
                       return Container(
-                        padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 10 : 14, vertical: isSmallScreen ? 4 : 7),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isTinyScreen ? 6 : (isSmallScreen ? 10 : 14), 
+                          vertical: isTinyScreen ? 2 : (isSmallScreen ? 4 : 7)
+                        ),
                         decoration: BoxDecoration(
                           color: chipBg,
-                          borderRadius: BorderRadius.circular(isSmallScreen ? 18 : 30),
+                          borderRadius: BorderRadius.circular(isTinyScreen ? 12 : (isSmallScreen ? 18 : 30)),
                           boxShadow: [
                             if (finalized && hasDocument)
                               BoxShadow(
                                 color: chipColor.withOpacity(0.18),
-                                blurRadius: isSmallScreen ? 4 : 8,
+                                blurRadius: isTinyScreen ? 2 : (isSmallScreen ? 4 : 8),
                                 offset: const Offset(0, 2),
                               ),
                           ],
@@ -426,14 +495,14 @@ class _MergeDashboardState extends State<MergeDashboard> {
                           children: [
                             Icon(
                               chipIcon,
-                              size: isSmallScreen ? 13 : 18,
+                              size: isTinyScreen ? 10 : (isSmallScreen ? 13 : 18),
                               color: chipColor,
                             ),
-                            SizedBox(width: isSmallScreen ? 4 : 6),
+                            SizedBox(width: isTinyScreen ? 2 : (isSmallScreen ? 4 : 6)),
                             Text(
                               sectionName,
                               style: TextStyle(
-                                fontSize: isSmallScreen ? 10 : 13,
+                                fontSize: isTinyScreen ? 8 : (isSmallScreen ? 10 : 13),
                                 fontWeight: FontWeight.w600,
                                 color: chipColor,
                               ),
@@ -444,17 +513,21 @@ class _MergeDashboardState extends State<MergeDashboard> {
                     }).toList(),
                   ),
                   if (!ready) ...[
-                    SizedBox(height: isSmallScreen ? 8 : 16),
+                    SizedBox(height: isTinyScreen ? 4 : (isSmallScreen ? 8 : 16)),
                     if (notFinalized.isNotEmpty)
                       Row(
                         children: [
-                          Icon(Icons.warning, color: const Color.fromARGB(255, 255, 0, 0), size: isSmallScreen ? 13 : 18),
-                          SizedBox(width: isSmallScreen ? 4 : 6),
+                          Icon(
+                            Icons.warning, 
+                            color: const Color.fromARGB(255, 255, 0, 0), 
+                            size: isTinyScreen ? 10 : (isSmallScreen ? 13 : 18)
+                          ),
+                          SizedBox(width: isTinyScreen ? 2 : (isSmallScreen ? 4 : 6)),
                           Expanded(
                             child: Text(
-                              'Not finalized: ${notFinalized.join(", ")}',
+                              isTinyScreen ? 'Not finalized' : 'Not finalized: ${notFinalized.join(", ")}',
                               style: TextStyle(
-                                fontSize: isSmallScreen ? 10 : 13,
+                                fontSize: isTinyScreen ? 8 : (isSmallScreen ? 10 : 13),
                                 color: const Color.fromARGB(255, 255, 0, 0),
                                 fontWeight: FontWeight.w500,
                               ),
@@ -465,13 +538,17 @@ class _MergeDashboardState extends State<MergeDashboard> {
                     if (missing.isNotEmpty)
                       Row(
                         children: [
-                          Icon(Icons.description, color: Colors.red, size: isSmallScreen ? 13 : 18),
-                          SizedBox(width: isSmallScreen ? 4 : 6),
+                          Icon(
+                            Icons.description, 
+                            color: Colors.red, 
+                            size: isTinyScreen ? 10 : (isSmallScreen ? 13 : 18)
+                          ),
+                          SizedBox(width: isTinyScreen ? 2 : (isSmallScreen ? 4 : 6)),
                           Expanded(
                             child: Text(
-                              'Missing documents: ${missing.join(", ")}',
+                              isTinyScreen ? 'Missing docs' : 'Missing documents: ${missing.join(", ")}',
                               style: TextStyle(
-                                fontSize: isSmallScreen ? 10 : 13,
+                                fontSize: isTinyScreen ? 8 : (isSmallScreen ? 10 : 13),
                                 color: Colors.red,
                                 fontWeight: FontWeight.w500,
                               ),

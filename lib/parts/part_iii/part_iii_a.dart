@@ -742,8 +742,10 @@ class _PartIIIAState extends State<PartIIIA> {
                                 ],
                               ),
                               const SizedBox(height: 16),
-                              const Text(
-                                'Please fill in all the required fields for each ICT project. You can add multiple projects as needed. Each project can be dragged and placed wherever you want to change its order. The top project will be Rank 1, the next will be Rank 2, and so on. Each project will be exported as a table in the DOCX. Make sure all information is accurate and complete before generating the document.',
+                              Text(
+                                _userRole == 'admin'
+                                    ? 'Please fill in all the required fields for each ICT project. You can add multiple projects as needed. Each project can be dragged and placed wherever you want to change its order. The top project will be Rank 1, the next will be Rank 2, and so on. Each project will be exported as a table in the DOCX. Make sure all information is accurate and complete before generating the document.'
+                                    : 'Please fill in all the required fields for your assigned ICT project. You can only edit projects that are assigned to your role. Each project will be exported as a table in the DOCX. Make sure all information is accurate and complete before generating the document.',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Color(0xFF4A5568),

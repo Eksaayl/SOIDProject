@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'admin_route_guard.dart';
-import 'utils/dialog_utils.dart';
+import '../admin_route_guard.dart';
+import '../utils/dialog_utils.dart';
 import 'package:http/http.dart' as http;
-import 'config.dart';
+import '../config.dart';
 
 class ManageUsersPage extends StatefulWidget {
   const ManageUsersPage({super.key});
@@ -141,7 +141,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
               ),
               
               Expanded(
-                child: Padding(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.all(32),
                   child: Column(
                     children: [
@@ -371,6 +371,24 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                             ),
                             const SizedBox(height: 16),
                             Text(
+                              'Mobile Number',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              userData['mobile'] as String? ?? 'Not specified',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xff021e84),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
                               'Service/Division',
                               style: TextStyle(
                                 fontSize: 12,
@@ -538,140 +556,164 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                 ],
               ),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xff021e84).withOpacity(0.1),
-                          blurRadius: 20,
-                          offset: const Offset(0, 4),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 16.0),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xff021e84).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.people,
+                            color: Color(0xff021e84),
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Manage Users',
+                                style: TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1A202C),
+                                ),
+                              ),
+                              Text(
+                                '${docs.length} total users',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF718096),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
+                  ),
+                ),
+                Container(
+                  height: 1,
+                  color: const Color(0xFFE2E8F0),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
                                 color: const Color(0xff021e84).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
+                                blurRadius: 20,
+                                offset: const Offset(0, 4),
                               ),
-                              child: const Icon(
-                                Icons.people,
-                                color: Color(0xff021e84),
-                                size: 28,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Manage Users',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold, 
-                                      fontSize: 32,
-                                      color: Color(0xff021e84),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                constraints: const BoxConstraints(maxWidth: 400),
+                                child: TextField(
+                                  controller: _searchController,
+                                  decoration: InputDecoration(
+                                    hintText: 'Search by username or email...',
+                                    hintStyle: TextStyle(color: Colors.grey[400]),
+                                    prefixIcon: Container(
+                                      margin: const EdgeInsets.all(8),
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xff021e84).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(
+                                        Icons.search,
+                                        color: Color(0xff021e84),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey[50],
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xff021e84),
+                                        width: 2,
+                                      ),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 16,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${docs.length} total users',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
+                                  onChanged: _onSearchChanged,
+                                  onSubmitted: _onSearchChanged,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 24),
                         
-                        Container(
-                          constraints: const BoxConstraints(maxWidth: 400),
-                          child: TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              hintText: 'Search by username or email...',
-                              hintStyle: TextStyle(color: Colors.grey[400]),
-                              prefixIcon: Container(
-                                margin: const EdgeInsets.all(8),
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
                                   color: const Color(0xff021e84).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 4),
                                 ),
-                                child: const Icon(
-                                  Icons.search,
-                                  color: Color(0xff021e84),
-                                  size: 20,
-                                ),
-                              ),
-                              filled: true,
-                              fillColor: Colors.grey[50],
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide.none,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: const BorderSide(
-                                  color: Color(0xff021e84),
-                                  width: 2,
-                                ),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 16,
-                              ),
+                              ],
                             ),
-                            onChanged: _onSearchChanged,
-                            onSubmitted: _onSearchChanged,
+                            child: isNarrow
+                                ? _buildMobileLayout(pagedDocs)
+                                : _buildDesktopLayout(pagedDocs, docs),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xff021e84).withOpacity(0.1),
-                            blurRadius: 20,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: isNarrow
-                          ? _buildMobileLayout(pagedDocs)
-                          : _buildDesktopLayout(pagedDocs, docs),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         },
@@ -723,10 +765,10 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          _showProfilePicture(context, username, data['photoURL'] as String?, data);
+                          _showProfilePicture(context, username, data['profilePictureURL'] as String?, data);
                         },
                         icon: const Icon(Icons.photo_camera, size: 18),
-                        label: const Text('View Photo'),
+                        label: const Text('View Profile'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xff021e84),
                           foregroundColor: Colors.white,
@@ -947,7 +989,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
           ),
           child: Row(
             children: [
-              const _HeaderCell('Photo', flex: 1, textColor: Colors.white),
+              const _HeaderCell('View Profile', flex: 1, textColor: Colors.white),
               const _HeaderCell('Username', flex: 2, textColor: Colors.white),
               const _HeaderCell('Email', flex: 3, textColor: Colors.white),
               Expanded(
@@ -984,9 +1026,47 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                   ],
                 ),
               ),
-              const _HeaderCell('Role', flex: 1, textColor: Colors.white),
-              const _HeaderCell('Sub-Role', flex: 1, textColor: Colors.white),
-              const _HeaderCell('Actions', flex: 1, textColor: Colors.white),
+              Expanded(
+                flex: 1,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 30),
+                  child: Text(
+                    'Role',
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 1,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 20),
+                  child: Text(
+                    'Sub-Role',
+                    textAlign: TextAlign.left,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 1,
+                child: Center(
+                  child: Text(
+                    'Actions',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -1028,7 +1108,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                           flex: 1,
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              _showProfilePicture(context, username, data['photoURL'] as String?, data);
+                              _showProfilePicture(context, username, data['profilePictureURL'] as String?, data);
                             },
                             icon: const Icon(Icons.photo_camera, size: 16),
                             label: const Text('View'),
@@ -1048,11 +1128,15 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                         
                         Expanded(
                           flex: 2,
-                          child: Text(
-                            username,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xff021e84),
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 20),
+                            child: Text(
+                              username,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xff021e84),
+                              ),
                             ),
                           ),
                         ),
@@ -1061,6 +1145,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                           flex: 3,
                           child: Text(
                             email,
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.grey[700],
                             ),
@@ -1081,6 +1166,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                         Expanded(
                           flex: 1,
                           child: Container(
+                            margin: const EdgeInsets.only(right: 20),
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             decoration: BoxDecoration(
                               color: Colors.grey[50],
@@ -1164,96 +1250,100 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                         
                         Expanded(
                           flex: 1,
-                          child: Row(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: editedRole != currentRole || editedSubRole != currentSubRole 
-                                      ? const Color(0xff021e84)
-                                      : Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(Icons.save, color: Colors.white, size: 20),
-                                  tooltip: 'Save role',
-                                  onPressed: editedRole != currentRole || editedSubRole != currentSubRole
-                                      ? () async {
-                                          final confirmed = await DialogUtils.showDeleteConfirmationDialog(
-                                            context: context,
-                                            title: 'Confirm Save',
-                                            message: 'Are you sure you want to save these changes for this user?',
-                                            cancelText: 'Cancel',
-                                            confirmText: 'Save',
-                                          );
-                                          if (confirmed != true) return;
-                                          final newRole = _editedRoles[id];
-                                          final newSubRole = _editedSubRoles[id];
-                                          if (newRole != null && newRole != currentRole) {
-                                            FirebaseFirestore.instance
-                                                .collection('users')
-                                                .doc(id)
-                                                .update({'role': newRole});
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 20),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: editedRole != currentRole || editedSubRole != currentSubRole 
+                                        ? const Color(0xff021e84)
+                                        : Colors.grey[300],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.save, color: Colors.white, size: 20),
+                                    tooltip: 'Save role',
+                                    onPressed: editedRole != currentRole || editedSubRole != currentSubRole
+                                        ? () async {
+                                            final confirmed = await DialogUtils.showDeleteConfirmationDialog(
+                                              context: context,
+                                              title: 'Confirm Save',
+                                              message: 'Are you sure you want to save these changes for this user?',
+                                              cancelText: 'Cancel',
+                                              confirmText: 'Save',
+                                            );
+                                            if (confirmed != true) return;
+                                            final newRole = _editedRoles[id];
+                                            final newSubRole = _editedSubRoles[id];
+                                            if (newRole != null && newRole != currentRole) {
+                                              FirebaseFirestore.instance
+                                                  .collection('users')
+                                                  .doc(id)
+                                                  .update({'role': newRole});
+                                            }
+                                            if (newSubRole != null && newSubRole != currentSubRole) {
+                                              final subRoleToSave = newSubRole is List ? (newSubRole as List).join(',') : newSubRole.toString();
+                                              FirebaseFirestore.instance
+                                                  .collection('users')
+                                                  .doc(id)
+                                                  .update({'sub_roles': subRoleToSave});
+                                            }
+                                            setState(() {
+                                              _editedRoles.remove(id);
+                                              _editedSubRoles.remove(id);
+                                            });
                                           }
-                                          if (newSubRole != null && newSubRole != currentSubRole) {
-                                            final subRoleToSave = newSubRole is List ? (newSubRole as List).join(',') : newSubRole.toString();
-                                            FirebaseFirestore.instance
-                                                .collection('users')
-                                                .doc(id)
-                                                .update({'sub_roles': subRoleToSave});
-                                          }
-                                          setState(() {
-                                            _editedRoles.remove(id);
-                                            _editedSubRoles.remove(id);
-                                          });
-                                        }
-                                      : null,
+                                        : null,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.white, size: 20),
-                                  tooltip: 'Delete user',
-                                  onPressed: () async {
-                                    final confirmed = await DialogUtils.showDeleteConfirmationDialog(
-                                      context: context,
-                                      title: 'Delete User',
-                                      message: 'Are you sure you want to delete this user? This action cannot be undone.',
-                                      cancelText: 'Cancel',
-                                      confirmText: 'Delete',
-                                    );
-                                    if (confirmed == true) {
-                                      showDialog(
+                                const SizedBox(width: 8),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.white, size: 20),
+                                    tooltip: 'Delete user',
+                                    onPressed: () async {
+                                      final confirmed = await DialogUtils.showDeleteConfirmationDialog(
                                         context: context,
-                                        barrierDismissible: false,
-                                        builder: (context) => const Center(child: CircularProgressIndicator()),
+                                        title: 'Delete User',
+                                        message: 'Are you sure you want to delete this user? This action cannot be undone.',
+                                        cancelText: 'Cancel',
+                                        confirmText: 'Delete',
                                       );
-                                      final success = await _deleteUserFromBackend(email);
-                                      Navigator.of(context).pop(); 
-                                      if (success) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('User deleted from Auth and Firestore!'),
-                                            backgroundColor: Colors.red,
-                                          ),
+                                      if (confirmed == true) {
+                                        showDialog(
+                                          context: context,
+                                          barrierDismissible: false,
+                                          builder: (context) => const Center(child: CircularProgressIndicator()),
                                         );
-                                      } else {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Failed to delete user. Please check backend logs.'),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
+                                        final success = await _deleteUserFromBackend(email);
+                                        Navigator.of(context).pop(); 
+                                        if (success) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('User deleted from Auth and Firestore!'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Failed to delete user. Please check backend logs.'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
                                       }
-                                    }
-                                  },
+                                    },
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1347,6 +1437,7 @@ class _HeaderCell extends StatelessWidget {
       flex: flex,
       child: Text(
         text,
+        textAlign: TextAlign.center,
         style: TextStyle(
           fontWeight: FontWeight.bold,
           color: textColor,

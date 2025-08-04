@@ -10,7 +10,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:archive/archive.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:test_project/main_part.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:test_project/homepage.dart';
 import '../../utils/user_utils.dart';
 import '../../services/notification_service.dart';
 import '../../state/selection_model.dart';
@@ -158,7 +159,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
         });
 
         try {
-          final docxRef = _storage.ref().child('$_yearRange/I.E/document.docx');
+          final docxRef = _storage.ref().child('$_yearRange/I.E/e.docx');
           final docxBytes = await docxRef.getData();
           if (docxBytes != null) {
             setState(() {
@@ -188,7 +189,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
       if (result != null) {
         final file = result.files.first;
         if (file.bytes != null) {
-          final docxRef = _storage.ref().child('$_yearRange/I.E/document.docx');
+          final docxRef = _storage.ref().child('$_yearRange/I.E/e.docx');
           await docxRef.putData(file.bytes!);
           
           await _sectionRef.set({
@@ -217,7 +218,7 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
     if (_uploadedFileBytes == null) throw Exception('No file to upload');
     
     final storageRef = _storage.ref()
-        .child('$_yearRange/I.E/document.docx');
+        .child('$_yearRange/I.E/e.docx');
 
     final uploadTask = storageRef.putData(_uploadedFileBytes!);
     final snapshot = await uploadTask;
@@ -295,6 +296,31 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
     });
   }
 
+  String _getGoogleDriveUrl() {
+    switch (_yearRange) {
+      case '2729':
+        return 'https://docs.google.com/document/d/14GRwPhybX2Rhy_O3xGqHTre4Ki9awN7vYEwbG4y2XU4/edit?usp=sharing';
+      case '3032':
+        return 'https://docs.google.com/document/d/18Y3UX_e7bRPe4jDPYim41jNcrOTF_TgRb4Om4tf-TTo/edit?usp=sharing';
+      case '3335':
+        return 'https://docs.google.com/document/d/1BKG3XOZ9F-HOkNrNcLnfF12d0n_frXvYDrfp6sZ4uiI/edit?usp=sharing';
+      case '3638':
+        return 'https://docs.google.com/document/d/1nfuu-pIsWO3JktLUWs8ppaTK3ckYPUFGcTJPFdLUv44/edit?usp=sharing';
+      case '3941':
+        return 'https://docs.google.com/document/d/1FuPZU5QT6BMFCsiIlANGuNrLprL81VvTbxIDO16s1LU/edit?usp=sharing';
+      case '4244':
+        return 'https://docs.google.com/document/d/1b5fpZNiispRFr8UHmVm2xs-bkJazWkJzQYRd4WYExqQ/edit?usp=sharing';
+      case '4547':
+        return 'https://docs.google.com/document/d/1-cDp_rdZiaVi3t_MZ-UhOruD7BiWfSdhDXIofEL9rVo/edit?usp=sharing';
+      case '4850':
+        return 'https://docs.google.com/document/d/1tVn5Ho6QJiGsis_9XxN87G5dfARKLdV5_VL5Vqh9ffU/edit?usp=sharing';
+      case '5153':
+        return 'https://docs.google.com/document/d/1gtclfDDayHLZkYCvWrrP7M8R06CDkttKlm0iG3pniuA/edit?usp=sharing';
+      default:
+        return 'https://docs.google.com/document/d/14GRwPhybX2Rhy_O3xGqHTre4Ki9awN7vYEwbG4y2XU4/edit?usp=sharing';
+    }
+  }
+
   Future<void> _compileDocx() async {
     if (_uploadedFileBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -337,9 +363,9 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
   Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
-      final fileName = 'document.docx';
+      final fileName = 'e.docx';
       final storage = FirebaseStorage.instance;
-      final docxRef = storage.ref().child('$_yearRange/I.E/document.docx');
+      final docxRef = storage.ref().child('$_yearRange/I.E/e.docx');
       final docxBytes = await docxRef.getData();
       if (docxBytes != null) {
         if (kIsWeb) {
@@ -509,9 +535,18 @@ class _PartIEFormPageState extends State<PartIEFormPage> {
                               Row(
                                 children: [
                                   ElevatedButton.icon(
-                                    onPressed: _downloadDocx,
-                                    icon: const Icon(Icons.download),
-                                    label: const Text('Download DOCX'),
+                                    onPressed: () async {
+                                      final url = _getGoogleDriveUrl();
+                                      try {
+                                        await launchUrl(Uri.parse(url));
+                                      } catch (e) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error opening Google Docs Template: $e'))
+                                        );
+                                      }
+                                    },
+                                    icon: const Icon(Icons.open_in_new),
+                                    label: const Text('Open Google Docs Template'),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Color(0xff021e84),
                                       foregroundColor: Colors.white,

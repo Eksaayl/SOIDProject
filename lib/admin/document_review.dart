@@ -7,48 +7,206 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'admin_route_guard.dart';
-import 'services/notification_service.dart';
-import 'utils/user_utils.dart';
+import '../admin_route_guard.dart';
+import '../services/notification_service.dart';
+import '../utils/user_utils.dart';
+import '../utils/dialog_utils.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
-import 'state/selection_model.dart';
+import 'package:file_picker/file_picker.dart';
+import '../state/selection_model.dart';
 import '../config.dart';
+import 'merge_dashboard.dart';
+import 'part_iii_checklist.dart';
+import 'History.dart';
+import 'document_review_ui.dart';
 
-class AdminDashboard extends StatefulWidget {
-  const AdminDashboard({Key? key}) : super(key: key);
+class DocumentReview extends StatefulWidget {
+  const DocumentReview({Key? key}) : super(key: key);
 
   @override
-  State<AdminDashboard> createState() => _AdminDashboardState();
+  State<DocumentReview> createState() => _DocumentReviewState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStateMixin {
+class _DocumentReviewState extends State<DocumentReview>
+    with TickerProviderStateMixin {
   late TabController _tabController;
+
+  // UI State
+  String _currentTitle = 'Document Review';
+  String _currentSubtitle = 'Review and manage submissions';
+  bool _isMerging = false;
+
+  // Filter State
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Pending', 'Approved', 'Rejected'];
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-  Set<String> _selectedSections = <String>{};
-  bool _isSelectMode = false;
+
+  /// Merges all document parts into a single complete ISSP document
+  Future<void> _handleMergeAllParts() async {
+    if (_tabController.index == 3) {
+      setState(() => _isMerging = true);
+      try {
+        final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+        final storage = FirebaseStorage.instance;
+        final mergedFilenames = [
+          'part_i_merged.docx',
+          'part_ii_merged.docx',
+          'part_iii_merged.docx',
+          'part_iv_merged.docx',
+          'part_v_merged.docx',
+        ];
+        final missingParts = <String>[];
+        final mergedFiles = <String, Uint8List>{};
+
+        for (final filename in mergedFilenames) {
+          final storagePath = '$yearRange/$filename';
+          try {
+            final ref = storage.ref().child(storagePath);
+            final bytes = await ref.getData();
+            if (bytes == null) {
+              missingParts.add(filename);
+            } else {
+              mergedFiles[filename] = bytes;
+            }
+          } catch (e) {
+            missingParts.add(filename);
+          }
+        }
+
+        if (missingParts.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text('Missing merged files for: ${missingParts.join(", ")}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        final mergeRequest = http.MultipartRequest(
+          'POST',
+          Uri.parse('${Config.serverUrl}/merge-all-parts'),
+        );
+
+        final partKeys = ['i', 'ii', 'iii', 'iv', 'v'];
+        for (int idx = 0; idx < mergedFilenames.length; idx++) {
+          final filename = mergedFilenames[idx];
+          final partKey = partKeys[idx];
+          mergeRequest.files.add(http.MultipartFile.fromBytes(
+            partKey,
+            mergedFiles[filename]!,
+            filename: filename,
+          ));
+        }
+
+        final response = await mergeRequest.send();
+        if (response.statusCode != 200) {
+          final error = await response.stream.bytesToString();
+          throw Exception(
+              'Failed to merge documents: ${response.statusCode} - $error');
+        }
+
+        final mergedBytes = await response.stream.toBytes();
+        final fileName = 'Complete_ISSP_${yearRange}.docx';
+
+        if (kIsWeb) {
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            bytes: mergedBytes,
+            mimeType: MimeType.microsoftWord,
+          );
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          final file = File('${directory.path}/$fileName');
+          await file.writeAsBytes(mergedBytes);
+          await FileSaver.instance.saveFile(
+            name: fileName,
+            file: file,
+            mimeType: MimeType.microsoftWord,
+          );
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All parts merged successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error merging documents: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } finally {
+        setState(() => _isMerging = false);
+      }
+    }
+  }
+
+  /// Refreshes the current tab data
+  Future<void> _handleRefresh() async {
+    if (_tabController.index == 3) {
+      setState(() {});
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(_updateTitle);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_updateTitle);
     _tabController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
+  /// Updates the app bar title and subtitle based on the current tab
+  void _updateTitle() {
+    if (!_tabController.indexIsChanging) {
+      setState(() {
+        final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+        final formattedYearRange = formatYearRange(yearRange);
+
+        switch (_tabController.index) {
+          case 0:
+            _currentTitle = 'Document Review';
+            _currentSubtitle = 'Review and manage submissions';
+            break;
+          case 1:
+            _currentTitle = 'All Sections';
+            _currentSubtitle = 'View and manage all document sections';
+            break;
+          case 2:
+            _currentTitle = 'History';
+            _currentSubtitle = formattedYearRange;
+            break;
+          case 3:
+            _currentTitle = 'Merge Dashboard';
+            _currentSubtitle = 'Monitor and merge document parts';
+            break;
+          case 4:
+            _currentTitle = 'Part III Checklist';
+            _currentSubtitle = 'Track project status and completion';
+            break;
+        }
+      });
+    }
+  }
+
+  /// Converts a DOCX file to HTML for preview
   Future<String?> _convertDocxToHtml(Uint8List bytes, String filename) async {
     final uri = Uri.parse('${Config.serverUrl}/convert-docx');
     final request = http.MultipartRequest('POST', uri)
-      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+      ..files
+          .add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     final response = await request.send();
     final respStr = await response.stream.bytesToString();
     if (response.statusCode == 200) {
@@ -59,7 +217,9 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     }
   }
 
-  Future<void> _viewDocument(BuildContext context, String documentId, String sectionId) async {
+  /// Opens a document preview dialog with HTML content
+  Future<void> _viewDocument(
+      BuildContext context, String documentId, String sectionId) async {
     try {
       final storage = FirebaseStorage.instance;
       final ref = storage.ref().child('$documentId/$sectionId/document.docx');
@@ -70,7 +230,8 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
           showDialog(
             context: context,
             builder: (context) => Dialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
               child: Container(
                 width: MediaQuery.of(context).size.width * 0.9,
                 height: MediaQuery.of(context).size.height * 0.9,
@@ -104,7 +265,8 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
                                   color: Colors.white.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Icon(Icons.visibility, color: Colors.white, size: 20),
+                                child: const Icon(Icons.visibility,
+                                    color: Colors.white, size: 20),
                               ),
                               const SizedBox(width: 12),
                               Text(
@@ -156,7 +318,9 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     }
   }
 
-  Future<void> _downloadDocument(BuildContext context, String documentId, String sectionId) async {
+  /// Downloads a document file to the user's device
+  Future<void> _downloadDocument(
+      BuildContext context, String documentId, String sectionId) async {
     try {
       final storage = FirebaseStorage.instance;
       final ref = storage.ref().child('$documentId/$sectionId/document.docx');
@@ -190,7 +354,10 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     }
   }
 
-  Future<void> _updateScreeningStatus(BuildContext context, DocumentSnapshot section, bool approved, {String? rejectionMessage}) async {
+  /// Updates the screening status of a document section (approve/reject)
+  Future<void> _updateScreeningStatus(
+      BuildContext context, DocumentSnapshot section, bool approved,
+      {String? rejectionMessage}) async {
     try {
       final data = section.data() as Map<String, dynamic>;
       final sectionName = data['sectionTitle'] as String? ?? 'Unknown Section';
@@ -213,12 +380,15 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
           'screenedBy': await getCurrentUsername(),
           'rejectionMessage': rejectionMessage,
         });
-        await createRejectionNotification(sectionName, rejectionMessage ?? 'No reason provided', yearRange);
+        await createRejectionNotification(
+            sectionName, rejectionMessage ?? 'No reason provided', yearRange);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(approved ? 'Section approved and finalized successfully' : 'Section rejected successfully'),
+          content: Text(approved
+              ? 'Section approved and finalized successfully'
+              : 'Section rejected successfully'),
           backgroundColor: approved ? Colors.green : Colors.red,
         ),
       );
@@ -232,7 +402,9 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     }
   }
 
-  Future<void> _finalizeSection(BuildContext context, String sectionId, String sectionName) async {
+  /// Finalizes a document section, marking it as complete
+  Future<void> _finalizeSection(
+      BuildContext context, String sectionId, String sectionName) async {
     try {
       final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
       await FirebaseFirestore.instance
@@ -249,17 +421,159 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     }
   }
 
-  Future<void> _showRejectionDialog(BuildContext context, DocumentSnapshot section) async {
+  /// Shows a dialog for rejecting a document section with a reason
+  Future<void> _showRejectionDialog(
+      BuildContext context, DocumentSnapshot section) async {
     final TextEditingController _controller = TextEditingController();
     final result = await showDialog<String>(
       context: context,
       builder: (context) => _PrettyRejectionDialog(controller: _controller),
     );
     if (result != null && result.isNotEmpty) {
-      await _updateScreeningStatus(context, section, false, rejectionMessage: result);
+      await _updateScreeningStatus(context, section, false,
+          rejectionMessage: result);
     }
   }
 
+  /// Shows a dialog for revising a document section
+  Future<void> _showReviseDialog(BuildContext context, DocumentSnapshot doc,
+      Map<String, dynamic> data) async {
+    try {
+      final sectionName = data['sectionTitle'] as String? ?? 'Unknown Section';
+      final sectionId = doc.id;
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+
+      print(
+          'Revise dialog called for section: $sectionName, ID: $sectionId, Year: $yearRange');
+
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => _ReviseDialog(sectionName: sectionName),
+      );
+
+      print('Dialog result: $result');
+
+      if (result == true) {
+        await _uploadRevisedDocument(
+            context, sectionId, sectionName, yearRange);
+      }
+    } catch (e) {
+      print('Error in _showReviseDialog: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening revise dialog: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  } 
+
+  /// Uploads a revised document to replace the current one
+  Future<void> _uploadRevisedDocument(BuildContext context, String sectionId,
+      String sectionName, String yearRange) async {
+    try {
+      print(
+          'Starting upload for section: $sectionName, ID: $sectionId, Year: $yearRange');
+
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecting new document...'),
+          backgroundColor: Color(0xff021e84),
+        ),
+      );
+
+      // Pick file
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['docx'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No file selected'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      final file = result.files.first;
+      if (!file.extension!.toLowerCase().contains('docx')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select a DOCX file'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Show uploading message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Uploading revised document...'),
+          backgroundColor: Color(0xff021e84),
+        ),
+      );
+
+      // Upload to Firebase Storage
+      final storage = FirebaseStorage.instance;
+      final storagePath = '$yearRange/$sectionId/${file.name}';
+      final storageRef = storage.ref().child(storagePath);
+
+      Uint8List fileBytes;
+      if (kIsWeb) {
+        fileBytes = file.bytes!;
+      } else {
+        final filePath = file.path!;
+        final fileObj = File(filePath);
+        fileBytes = await fileObj.readAsBytes();
+      }
+
+      final uploadTask = storageRef.putData(fileBytes);
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      // Update Firestore document
+      await FirebaseFirestore.instance
+          .collection('issp_documents')
+          .doc(yearRange)
+          .collection('sections')
+          .doc(sectionId)
+          .update({
+        'fileUrl': downloadUrl,
+        'fileName': file.name,
+        'uploadedAt': FieldValue.serverTimestamp(),
+        'uploadedBy': await getCurrentUsername(),
+        'isFinalized': false, // Reset finalization status
+        'screening': null, // Reset screening status
+        'screenedBy': null,
+        'screeningDate': null,
+        'rejectionMessage': null,
+      });
+
+      // Success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Document revised successfully for $sectionName'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print('Error in _uploadRevisedDocument: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error revising document: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Builds a status chip widget with appropriate colors and icons
   Widget _buildStatusChip(String status) {
     Color color;
     IconData icon;
@@ -325,17 +639,21 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     );
   }
 
-  Widget _buildSectionCard(BuildContext context, DocumentSnapshot doc, Map<String, dynamic> data) {
+  /// Builds a section card widget with actions and status
+  Widget _buildSectionCard(
+      BuildContext context, DocumentSnapshot doc, Map<String, dynamic> data,
+      {bool showReviseButton = true}) {
     final sectionName = data['sectionTitle'] as String? ?? 'Unknown Section';
     final createdBy = data['createdBy'] as String? ?? 'Unknown';
     final submittedAt = data['submittedAt'] as Timestamp?;
     final isFinalized = data['isFinalized'] as bool? ?? false;
     final screening = data['screening'];
+    final screenedBy = data['screenedBy'];
 
     String status = 'Pending';
     if (isFinalized) {
       status = 'Approved';
-    } else if (screening == false) {
+    } else if (screening == false && screenedBy != null) {
       status = 'Rejected';
     }
 
@@ -430,7 +748,8 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFE2E8F0),
                                 borderRadius: BorderRadius.circular(8),
@@ -501,14 +820,34 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         SizedBox(
-                          width: 120,
+                          width: showReviseButton ? 141 : 290,
                           child: _buildActionButton(
                             icon: Icons.download,
                             label: 'Download',
-                            color: Colors.green,
-                            onPressed: () => _downloadDocument(context, context.read<SelectionModel>().yearRange ?? '2729', doc.id),
+                            color: const Color(0xff021e84),
+                            onPressed: () => _downloadDocument(
+                                context,
+                                context.read<SelectionModel>().yearRange ??
+                                    '2729',
+                                doc.id),
                           ),
                         ),
+                        if (showReviseButton) ...[
+                          const SizedBox(width: 16),
+                          SizedBox(
+                            width: 141,
+                            child: _buildActionButton(
+                              icon: Icons.edit,
+                              label: 'Revise',
+                              color: const Color(0xff021e84),
+                              onPressed: () {
+                                print(
+                                    'Revise button pressed for section: ${doc.id}');
+                                _showReviseDialog(context, doc, data);
+                              },
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     if (screening == true) ...[
@@ -530,25 +869,35 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           SizedBox(
-                            width: 120,
+                            width: 140,
                             child: _buildActionButton(
                               icon: Icons.cancel,
                               label: 'Reject',
                               color: Colors.red,
-                              onPressed: () => _showRejectionDialog(context, doc),
+                              onPressed: () =>
+                                  _showRejectionDialog(context, doc),
                             ),
                           ),
                           const SizedBox(width: 16),
                           SizedBox(
-                            width: 120,
+                            width: 140,
                             child: _buildActionButton(
                               icon: Icons.check_circle,
                               label: 'Approve',
                               color: Colors.green,
                               onPressed: () async {
-                                await _updateScreeningStatus(context, doc, true);
-                                if (!isFinalized) {
-                                  await _finalizeSection(context, doc.id, sectionName);
+                                final confirmed = await DialogUtils
+                                    .showApprovalConfirmationDialog(
+                                  context: context,
+                                  sectionName: sectionName,
+                                );
+                                if (confirmed == true) {
+                                  await _updateScreeningStatus(
+                                      context, doc, true);
+                                  if (!isFinalized) {
+                                    await _finalizeSection(
+                                        context, doc.id, sectionName);
+                                  }
                                 }
                               },
                             ),
@@ -566,6 +915,7 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     );
   }
 
+  /// Builds a styled action button with gradient background
   Widget _buildActionButton({
     required IconData icon,
     required String label,
@@ -579,12 +929,12 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: color.withOpacity(0.3),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -594,21 +944,21 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
           ),
           elevation: 0,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16),
-            const SizedBox(width: 6),
+            Icon(icon, size: 20),
+            const SizedBox(width: 8),
             Text(
               label,
               style: const TextStyle(
-                fontSize: 12,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -618,128 +968,23 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
     );
   }
 
+  /// Formats a date for display
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildSearchAndFilters() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _searchController,
-            onChanged: (value) {
-              setState(() {
-                _searchQuery = value.toLowerCase();
-              });
-            },
-            decoration: InputDecoration(
-              hintText: 'Search sections...',
-              prefixIcon: const Icon(Icons.search, color: Color(0xff021e84)),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchQuery = '';
-                        });
-                      },
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xff021e84)),
-              ),
-              filled: true,
-              fillColor: Colors.grey.shade50,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Text(
-                'Filter by status:',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF4A5568),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  children: _filters.map((filter) {
-                    final isSelected = _selectedFilter == filter;
-                    return FilterChip(
-                      label: Text(filter),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedFilter = selected ? filter : 'All';
-                        });
-                      },
-                      backgroundColor: Colors.grey.shade100,
-                      selectedColor: const Color(0xff021e84).withOpacity(0.2),
-                      checkmarkColor: const Color(0xff021e84),
-                      labelStyle: TextStyle(
-                        color: isSelected ? const Color(0xff021e84) : Colors.grey.shade700,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(
-                          color: isSelected ? const Color(0xff021e84) : Colors.grey.shade300,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  bool _matchesSearch(Map<String, dynamic> data) {
-    if (_searchQuery.isEmpty) return true;
-
-    final sectionName = (data['sectionTitle'] as String? ?? '').toLowerCase();
-    final createdBy = (data['createdBy'] as String? ?? '').toLowerCase();
-
-    return sectionName.contains(_searchQuery) || createdBy.contains(_searchQuery);
-  }
-
+  /// Checks if a document matches the current filter criteria
   bool _matchesFilter(Map<String, dynamic> data) {
     if (_selectedFilter == 'All') return true;
 
     final isFinalized = data['isFinalized'] as bool? ?? false;
     final screening = data['screening'];
+    final screenedBy = data['screenedBy'];
 
     String status = 'Pending';
     if (isFinalized) {
       status = 'Approved';
-    } else if (screening == false) {
+    } else if (screening == false && screenedBy != null) {
       status = 'Rejected';
     }
 
@@ -748,463 +993,22 @@ class _AdminDashboardState extends State<AdminDashboard> with TickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
-    return AdminRouteGuard(
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF7FAFC),
-        appBar: AppBar(
-          title: const Text(
-            'Admin Dashboard',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 24,
-              color: Colors.black,
-            ),
-          ),
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: Colors.white,
-          iconTheme: const IconThemeData(color: Colors.black),
-          bottom: TabBar(
-            controller: _tabController,
-            indicatorColor: const Color(0xff021e84),
-            indicatorWeight: 3,
-            labelColor: const Color(0xff021e84),
-            unselectedLabelColor: Colors.grey,
-            tabs: const [
-              Tab(text: 'Pending Review'),
-              Tab(text: 'All Sections'),
-              Tab(text: 'Statistics'),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildPendingReviewTab(yearRange),
-            _buildAllSectionsTab(yearRange),
-            _buildStatisticsTab(yearRange),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPendingReviewTab(String yearRange) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('issp_documents')
-          .doc(yearRange)
-          .collection('sections')
-          .where('screening', isEqualTo: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(color: Color(0xff021e84)),
-                SizedBox(height: 16),
-                Text(
-                  'Loading pending reviews...',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFF4A5568),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 64,
-                  color: Colors.red.withOpacity(0.5),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Error: ${snapshot.error}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFF4A5568),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        final docs = snapshot.data?.docs ?? [];
-
-        if (docs.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 64,
-                        color: Colors.green.withOpacity(0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'No sections pending review',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2D3748),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'All sections have been reviewed',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Color(0xFF4A5568),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(20),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final doc = docs[index];
-            final data = doc.data() as Map<String, dynamic>;
-            return _buildSectionCard(context, doc, data);
-          },
-        );
+    return DocumentReviewUI(
+      tabController: _tabController,
+      currentTitle: _currentTitle,
+      currentSubtitle: _currentSubtitle,
+      isMerging: _isMerging,
+      selectedFilter: _selectedFilter,
+      filters: _filters,
+      onMergeAllParts: _handleMergeAllParts,
+      onRefresh: _handleRefresh,
+      onFilterChanged: (filter) {
+        setState(() {
+          _selectedFilter = filter;
+        });
       },
-    );
-  }
-
-  Widget _buildAllSectionsTab(String yearRange) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('issp_documents')
-          .doc(yearRange)
-          .collection('sections')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xff21e84)));
-        }
-
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final docs = snapshot.data?.docs ?? [];
-
-        if (docs.isEmpty) {
-          return const Center(
-            child: Text(
-              'No sections found',
-              style: TextStyle(fontSize: 16, color: Color(0xFF4A5568)),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(20),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final doc = docs[index];
-            final data = doc.data() as Map<String, dynamic>;
-            return _buildSectionCard(context, doc, data);
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildStatisticsTab(String yearRange) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('issp_documents')
-          .doc(yearRange)
-          .collection('sections')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xff21e84)));
-        }
-
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final docs = snapshot.data?.docs ?? [];
-
-        int pending = 0;
-        int approved = 0;
-        int rejected = 0;
-
-        for (var doc in docs) {
-          final data = doc.data() as Map<String, dynamic>;
-          final isFinalized = data['isFinalized'] as bool? ?? false;
-          final screening = data['screening'];
-
-          if (isFinalized) {
-            approved++;
-          } else if (screening == false) {
-            rejected++;
-          } else if (screening == true) {
-            pending++;
-          }
-        }
-
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              _buildStatCard(
-                title: 'Total Sections',
-                value: docs.length.toString(),
-                icon: Icons.folder,
-                color: const Color(0xff021e84),
-              ),
-              const SizedBox(height: 16),
-              _buildStatCard(
-                title: 'Pending Review',
-                value: pending.toString(),
-                icon: Icons.pending,
-                color: Colors.orange,
-              ),
-              const SizedBox(height: 16),
-              _buildStatCard(
-                title: 'Approved',
-                value: approved.toString(),
-                icon: Icons.check_circle,
-                color: Colors.green,
-              ),
-              const SizedBox(height: 16),
-              _buildStatCard(
-                title: 'Rejected',
-                value: rejected.toString(),
-                icon: Icons.cancel,
-                color: Colors.red,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 32),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFF4A5568),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBatchActionsBar() {
-    if (!_isSelectMode || _selectedSections.isEmpty) return const SizedBox.shrink();
-    
-    return Container(
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xff021e84), Color(0xff1e40af)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xff021e84).withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.check_circle,
-            color: Colors.white,
-            size: 24,
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '${_selectedSections.length} section${_selectedSections.length == 1 ? '' : 's'} selected',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              _buildBatchActionButton(
-                icon: Icons.download,
-                label: 'Download All',
-                onPressed: () => _downloadSelectedSections(),
-              ),
-              const SizedBox(width: 8),
-              _buildBatchActionButton(
-                icon: Icons.check_circle,
-                label: 'Approve All',
-                onPressed: () => _approveSelectedSections(),
-              ),
-              const SizedBox(width: 8),
-              _buildBatchActionButton(
-                icon: Icons.cancel,
-                label: 'Reject All',
-                onPressed: () => _rejectSelectedSections(),
-              ),
-              const SizedBox(width: 8),
-              _buildBatchActionButton(
-                icon: Icons.close,
-                label: 'Clear',
-                onPressed: () {
-                  setState(() {
-                    _selectedSections.clear();
-                    _isSelectMode = false;
-                  });
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBatchActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: TextButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white, size: 18),
-        label: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _downloadSelectedSections() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Downloading ${_selectedSections.length} sections...'),
-        backgroundColor: Colors.blue,
-      ),
-    );
-  }
-
-  Future<void> _approveSelectedSections() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Approving ${_selectedSections.length} sections...'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  Future<void> _rejectSelectedSections() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Rejecting ${_selectedSections.length} sections...'),
-        backgroundColor: Colors.red,
-      ),
+      buildSectionCard: _buildSectionCard,
+      matchesFilter: _matchesFilter,
     );
   }
 }
@@ -1256,7 +1060,8 @@ class _PrettyRejectionDialog extends StatelessWidget {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.cancel, color: Colors.white, size: 24),
+                    child:
+                        const Icon(Icons.cancel, color: Colors.white, size: 24),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -1353,21 +1158,26 @@ class _PrettyRejectionDialog extends StatelessWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color.fromARGB(255, 132, 2, 2), Color.fromARGB(255, 175, 30, 30)],
+                        colors: [
+                          Color.fromARGB(255, 132, 2, 2),
+                          Color.fromARGB(255, 175, 30, 30)
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: Color.fromARGB(255, 175, 30, 30).withOpacity(0.2),
+                          color:
+                              Color.fromARGB(255, 175, 30, 30).withOpacity(0.2),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
                       ],
                     ),
                     child: ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+                      onPressed: () =>
+                          Navigator.of(context).pop(controller.text.trim()),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
@@ -1380,6 +1190,181 @@ class _PrettyRejectionDialog extends StatelessWidget {
                       ),
                       child: const Text(
                         'Reject',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReviseDialog extends StatelessWidget {
+  final String sectionName;
+
+  const _ReviseDialog({required this.sectionName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      elevation: 20,
+      child: Container(
+        width: 500,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xff021e84), Color(0xff1e40af)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child:
+                        const Icon(Icons.edit, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Revise Section',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFFBFDBFE),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDBEAFE),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.info_outline,
+                      color: Color(0xFF1E40AF),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'You are about to replace the current document for "$sectionName". This will reset the approval status and require re-review.',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF1E40AF),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xff021e84), Color(0xff1e40af)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xff021e84).withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Upload New Document',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,

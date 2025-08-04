@@ -2,14 +2,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:test_project/main_part.dart';
+import 'package:test_project/homepage.dart';
 import 'package:test_project/state/selection_model.dart';
 import 'package:test_project/settings.dart';
 import 'package:test_project/profile.dart';
-import 'admin_dashboard.dart';
-import 'History.dart';
+import 'admin/document_review.dart';
 import 'login/login.dart';
-import 'manage_users.dart';
+import 'admin/manage_users.dart';
+import 'startup.dart';
 
 class Landing extends StatefulWidget {
   const Landing({super.key});
@@ -27,22 +27,33 @@ class _LandingState extends State<Landing> {
   String _userRole = '';
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _userDocStream;
   int _selectedIndex = 0;
+  bool _hasProjects = false;
+  bool _isCheckingProjects = true;
 
   @override
   void initState() {
     super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     _userDocStream = FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
         .snapshots();
+    
     _userDocStream.listen((snap) {
       if (!snap.exists) return;
       final role = (snap.data()!['role'] as String?)?.toLowerCase() ?? '';
+      final subRoles = List<String>.from(snap.data()!['sub_roles'] ?? []);
+      
       setState(() {
         _userRole = role;
         _isAdmin = role == 'admin';
         _isEditor = role == 'editor';
+        _hasProjects = subRoles.isNotEmpty;
+        _isCheckingProjects = false;
       });
     });
   }
@@ -76,8 +87,7 @@ class _LandingState extends State<Landing> {
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Users', const ManageUsersPage()),
-      if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', const HistoryPage()),
-      if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
+      if (_isAdmin) _NavItemData(Icons.dashboard, 'Document Review', const DocumentReview()),
     ];
 
     final bottomItems = <_NavItemData>[
@@ -150,14 +160,41 @@ class _LandingState extends State<Landing> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isCheckingProjects && !_hasProjects) {
+      return const StartupPage();
+    }
+
+    if (_isCheckingProjects) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xff021e84)),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Checking your projects...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFF4A5568),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final width = MediaQuery.of(context).size.width;
     final isDrawer = width < _breakpoint;
 
     final mainItems = <_NavItemData>[
       _NavItemData(Icons.home, 'Home', const HorizontalTabsPage()),
       if (_isAdmin) _NavItemData(Icons.group, 'Manage Users', const ManageUsersPage()),
-      if (_isAdmin || _isEditor) _NavItemData(Icons.history, 'History', const HistoryPage()),
-      if (_isAdmin) _NavItemData(Icons.dashboard, 'Admin Dashboard', const AdminDashboard()),
+      if (_isAdmin) _NavItemData(Icons.dashboard, 'Document Review', const DocumentReview()),
     ];
     final bottomItems = <_NavItemData>[
       _NavItemData(Icons.person, 'Profile', const ProfilePage()),

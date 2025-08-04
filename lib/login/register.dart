@@ -30,6 +30,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passCtrl     = TextEditingController();
   final _confirmCtrl  = TextEditingController();
   final _serviceCtrl  = TextEditingController();
+  final _mobileCtrl   = TextEditingController();
 
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
@@ -39,7 +40,15 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _acceptedTerms = false;
   bool _viewedTerms = false;
   bool _viewedPrivacy = false;
+  bool _showPassword = false;
+  bool _showConfirmPassword = false;
   Uint8List? _pickedImage;
+  
+  bool _hasMinLength = false;
+  bool _hasUppercase = false;
+  bool _hasLowercase = false;
+  bool _hasNumber = false;
+  bool _hasSpecialChar = false;
 
   @override
   void initState() {
@@ -51,6 +60,7 @@ class _RegisterPageState extends State<RegisterPage> {
         _showUsernameHelp = _usernameCtrl.text.isNotEmpty;
       });
     });
+    _passCtrl.addListener(_validatePassword);
     if (widget.initialPhotoUrl.isNotEmpty) {
       _fetchInitialPhoto(widget.initialPhotoUrl);
     }
@@ -68,6 +78,21 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  void _validatePassword() {
+    final password = _passCtrl.text;
+    setState(() {
+      _hasMinLength = password.length >= 8;
+      _hasUppercase = password.contains(RegExp(r'[A-Z]'));
+      _hasLowercase = password.contains(RegExp(r'[a-z]'));
+      _hasNumber = password.contains(RegExp(r'[0-9]'));
+      _hasSpecialChar = password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
+    });
+  }
+
+  bool _isPasswordValid() {
+    return _hasMinLength && _hasUppercase && _hasLowercase && _hasNumber && _hasSpecialChar;
+  }
+
   @override
   void dispose() {
     _usernameCtrl.dispose();
@@ -75,6 +100,7 @@ class _RegisterPageState extends State<RegisterPage> {
     _passCtrl.dispose();
     _confirmCtrl.dispose();
     _serviceCtrl.dispose();
+    _mobileCtrl.dispose();
     super.dispose();
   }
 
@@ -479,9 +505,21 @@ class _RegisterPageState extends State<RegisterPage> {
     }
     
     if (!widget.isGoogleSignIn) {
+      if (!_isPasswordValid()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password does not meet security requirements. Please check the password criteria.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
       if (_passCtrl.text != _confirmCtrl.text) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Passwords do not match')),
+          const SnackBar(
+            content: Text('Passwords do not match'),
+            backgroundColor: Colors.red,
+          ),
         );
         return;
       }
@@ -538,6 +576,7 @@ class _RegisterPageState extends State<RegisterPage> {
           'username': _usernameCtrl.text.trim(),
           'email': _emailCtrl.text.trim(),
           'service': _serviceCtrl.text.trim(),
+          'mobile': _mobileCtrl.text.trim(),
           'photoURL': photoURL,
           'role': 'user',
           'profileComplete': true,
@@ -567,6 +606,7 @@ class _RegisterPageState extends State<RegisterPage> {
           'username': _usernameCtrl.text.trim(),
           'email': _emailCtrl.text.trim(),
           'service': _serviceCtrl.text.trim(),
+          'mobile': _mobileCtrl.text.trim(),
           'photoURL': photoURL, 
           'role': 'user',
           'createdAt': FieldValue.serverTimestamp(),
@@ -690,6 +730,135 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  Widget _buildPasswordField() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextFormField(
+        controller: _passCtrl,
+        obscureText: !_showPassword,
+        decoration: InputDecoration(
+          icon: const Icon(Icons.lock, color: Colors.grey),
+          hintText: 'Password',
+          border: InputBorder.none,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _showPassword ? Icons.visibility : Icons.visibility_off,
+              color: Colors.grey,
+            ),
+            onPressed: () {
+              setState(() {
+                _showPassword = !_showPassword;
+              });
+            },
+          ),
+        ),
+        validator: (v) {
+          if (v == null || v.isEmpty) return 'Enter your password';
+          if (!_isPasswordValid()) return 'Password does not meet requirements';
+          return null;
+        },
+      ),
+    );
+  }
+
+  Widget _buildConfirmPasswordField() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextFormField(
+        controller: _confirmCtrl,
+        obscureText: !_showConfirmPassword,
+        decoration: InputDecoration(
+          icon: const Icon(Icons.lock_outline, color: Colors.grey),
+          hintText: 'Confirm Password',
+          border: InputBorder.none,
+          suffixIcon: IconButton(
+            icon: Icon(
+              _showConfirmPassword ? Icons.visibility : Icons.visibility_off,
+              color: Colors.grey,
+            ),
+            onPressed: () {
+              setState(() {
+                _showConfirmPassword = !_showConfirmPassword;
+              });
+            },
+          ),
+        ),
+        validator: (v) {
+          if (v == null || v.isEmpty) return 'Confirm your password';
+          if (v != _passCtrl.text) return 'Passwords do not match';
+          return null;
+        },
+      ),
+    );
+  }
+
+  Widget _buildPasswordValidationWidget() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8, left: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Password Requirements:',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildValidationItem('At least 8 characters', _hasMinLength),
+          _buildValidationItem('At least one uppercase letter (A-Z)', _hasUppercase),
+          _buildValidationItem('At least one lowercase letter (a-z)', _hasLowercase),
+          _buildValidationItem('At least one number (0-9)', _hasNumber),
+          _buildValidationItem('At least one special character (!@#\$%^&*)', _hasSpecialChar),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildValidationItem(String text, bool isValid) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            isValid ? Icons.check_circle : Icons.circle_outlined,
+            size: 16,
+            color: isValid ? Colors.green : Colors.white70,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              color: isValid ? Colors.green : Colors.white70,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -807,26 +976,23 @@ class _RegisterPageState extends State<RegisterPage> {
                         validator: (v) =>
                         (v == null || v.isEmpty) ? 'Enter your service/division' : null,
                       ),
+                      _buildTextField(
+                        controller: _mobileCtrl,
+                        hint: 'Mobile Number',
+                        icon: Icons.phone,
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Enter your mobile number';
+                          final phoneRegex = RegExp(r'^(\+63|0)?9\d{9}$');
+                          if (!phoneRegex.hasMatch(v.replaceAll(RegExp(r'[\s\-\(\)]'), ''))) {
+                            return 'Please enter a valid Philippine mobile number';
+                          }
+                          return null;
+                        },
+                      ),
                       if (!widget.isGoogleSignIn) ...[
-                        _buildTextField(
-                          controller: _passCtrl,
-                          hint: 'Password',
-                          obscure: true,
-                          icon: Icons.lock,
-                          validator: (v) {
-                            if (v == null || v.isEmpty) return 'Enter your password';
-                            if (v.length < 6) return 'Minimum 6 characters';
-                            return null;
-                          },
-                        ),
-                        _buildTextField(
-                          controller: _confirmCtrl,
-                          hint: 'Confirm Password',
-                          obscure: true,
-                          icon: Icons.lock_outline,
-                          validator: (v) =>
-                          (v == null || v.isEmpty) ? 'Confirm your password' : null,
-                        ),
+                        _buildPasswordField(),
+                        _buildConfirmPasswordField(),
+                        _buildPasswordValidationWidget(),
                       ],
                     ],
                   ),
