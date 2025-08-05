@@ -401,10 +401,43 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
   }
 
   Future<void> _pickOrgStructureImage() async {
-    final x = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (x != null) {
-      final bytes = await x.readAsBytes();
-      setState(() => _orgStructureImage = bytes);
+    try {
+      final x = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 100,
+      );
+      if (x != null) {
+        // Check file extension to ensure it's JPEG or PNG
+        final fileName = x.name.toLowerCase();
+        if (!fileName.endsWith('.jpg') && 
+            !fileName.endsWith('.jpeg') && 
+            !fileName.endsWith('.png')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select only JPEG (.jpg/.jpeg) or PNG (.png) files for the organizational structure.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        
+        final bytes = await x.readAsBytes();
+        setState(() => _orgStructureImage = bytes);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Organizational structure image selected successfully.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error selecting image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -956,7 +989,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
               _buildTableRow('Vacant', coVacantCtl, foVacantCtl),
               _buildTableRow('No. of Filled Up Positions (Plantilla)', coFilledPlantilaCtl, foFilledPlantilaCtl),
               _buildTableRow('No. of Filled Up Positions (Physical Location)', coFilledPhysicalCtl, foFilledPhysicalCtl),
-              _buildTableRow('COSWs (*FO as of 01 July 2022)', coCoswsCtl, foCoswsCtl),
+              _buildTableRow('COSWs (FO)', coCoswsCtl, foCoswsCtl),
               _buildTableRow('Contractual (Driver I/II)', coContractualCtl, foContractualCtl),
               _buildTableRow('Total', coTotalCtl, foTotalCtl, isTotal: true),
             ],

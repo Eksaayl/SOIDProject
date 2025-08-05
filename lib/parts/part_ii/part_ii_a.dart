@@ -177,6 +177,8 @@ class _PartIIAState extends State<PartIIA> {
   bool _compiling = false;
   bool _isFinalized = false;
   bool _hasUnsavedChanges = false;
+  String _userRole = '';
+  bool _hasLoadedRole = false;
 
   late DocumentReference _sectionRef;
   final _user = FirebaseAuth.instance.currentUser;
@@ -192,6 +194,7 @@ class _PartIIAState extends State<PartIIA> {
   void initState() {
     super.initState();
     print('initState (Part II.A) - yearRange: $_yearRange');
+    _checkUserAccess();
     _sectionRef = FirebaseFirestore.instance
         .collection('issp_documents')
         .doc(_yearRange)
@@ -199,6 +202,23 @@ class _PartIIAState extends State<PartIIA> {
         .doc('II.A');
 
     _loadContent();
+  }
+
+  Future<void> _checkUserAccess() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      setState(() {
+        _userRole = userDoc.data()?['role'] ?? '';
+        _hasLoadedRole = true;
+      });
+    }
+  }
+
+  bool _canAccess() {
+    if (!_hasLoadedRole) return false;
+    final role = _userRole.toLowerCase();
+    return role == 'admin' || role == 'itds';
   }
 
   void _markUnsaved() {
@@ -263,11 +283,21 @@ class _PartIIAState extends State<PartIIA> {
       );
 
       if (result != null) {
-        final bytes = result.files.first.bytes;
+        final file = result.files.first;
+        final fileName = file.name.toLowerCase();
+        if (!fileName.endsWith('.jpg') && !fileName.endsWith('.jpeg') && !fileName.endsWith('.png')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select only JPEG (.jpg/.jpeg) or PNG (.png) files.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        final bytes = file.bytes;
         if (bytes != null) {
           final imageRef = _storage.ref().child('$_yearRange/II.A/${type.toLowerCase()}.png');
           await imageRef.putData(bytes);
-          
           setState(() {
             switch (type) {
               case 'ISI':
@@ -581,6 +611,36 @@ class _PartIIAState extends State<PartIIA> {
 
   @override
   Widget build(BuildContext context) {
+    // Check access permission
+    if (!_canAccess()) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Access Denied'),
+          backgroundColor: Colors.red,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock, size: 64, color: Colors.red),
+              SizedBox(height: 16),
+              Text(
+                'Access Denied',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'You do not have permission to access Part II.A.\nOnly Admin and ITDS users can access this section.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_loading) {
       return const Scaffold(
         body: Center(

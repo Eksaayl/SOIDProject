@@ -49,6 +49,8 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _hasLowercase = false;
   bool _hasNumber = false;
   bool _hasSpecialChar = false;
+  bool _showPasswordRequirements = false;
+  bool _showMobileHelp = false;
 
   @override
   void initState() {
@@ -58,6 +60,11 @@ class _RegisterPageState extends State<RegisterPage> {
     _usernameCtrl.addListener(() {
       setState(() {
         _showUsernameHelp = _usernameCtrl.text.isNotEmpty;
+      });
+    });
+    _mobileCtrl.addListener(() {
+      setState(() {
+        _showMobileHelp = _mobileCtrl.text.isNotEmpty;
       });
     });
     _passCtrl.addListener(_validatePassword);
@@ -81,6 +88,7 @@ class _RegisterPageState extends State<RegisterPage> {
   void _validatePassword() {
     final password = _passCtrl.text;
     setState(() {
+      _showPasswordRequirements = password.isNotEmpty;
       _hasMinLength = password.length >= 8;
       _hasUppercase = password.contains(RegExp(r'[A-Z]'));
       _hasLowercase = password.contains(RegExp(r'[a-z]'));
@@ -108,6 +116,16 @@ class _RegisterPageState extends State<RegisterPage> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.camera);
     if (picked != null) {
+      final fileName = picked.name.toLowerCase();
+      if (!fileName.endsWith('.jpg') && !fileName.endsWith('.jpeg') && !fileName.endsWith('.png')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select only JPEG (.jpg/.jpeg) or PNG (.png) files.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
       final bytes = await picked.readAsBytes();
       setState(() {
         _pickedImage = bytes;
@@ -989,10 +1007,26 @@ class _RegisterPageState extends State<RegisterPage> {
                           return null;
                         },
                       ),
+                      if (_showMobileHelp)
+                        Container(
+                          margin: EdgeInsets.only(top: 4, left: 8),
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'Preferably Viber for better communication',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
                       if (!widget.isGoogleSignIn) ...[
                         _buildPasswordField(),
                         _buildConfirmPasswordField(),
-                        _buildPasswordValidationWidget(),
+                        if (_showPasswordRequirements) _buildPasswordValidationWidget(),
                       ],
                     ],
                   ),

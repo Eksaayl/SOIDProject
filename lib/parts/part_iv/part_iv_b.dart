@@ -191,11 +191,21 @@ class _PartIVBState extends State<PartIVB> {
       );
 
       if (result != null) {
-        final bytes = result.files.first.bytes;
+        final file = result.files.first;
+        final fileName = file.name.toLowerCase();
+        if (!fileName.endsWith('.jpg') && !fileName.endsWith('.jpeg') && !fileName.endsWith('.png')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select only JPEG (.jpg/.jpeg) or PNG (.png) files.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        final bytes = file.bytes;
         if (bytes != null) {
           final imageRef = _storage.ref().child('$_yearRange/IV.B/${type.toLowerCase()}.png');
           await imageRef.putData(bytes);
-          
           setState(() {
             switch (type) {
               case 'Existing':
@@ -209,7 +219,6 @@ class _PartIVBState extends State<PartIVB> {
                 break;
             }
           });
-
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Image uploaded successfully'))
           );

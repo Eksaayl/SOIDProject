@@ -20,7 +20,7 @@ class _StartupTimePageState extends State<StartupTimePage> {
   final List<String> _timeRanges = [
     '2021-2023',
     '2024-2026',
-    ...List.generate(9, (i) {
+    ...List.generate(3, (i) {
       final start = 2027 + i * 3;
       final end = start + 2;
       return '$start-$end';

@@ -33,16 +33,13 @@ class _DocumentReviewState extends State<DocumentReview>
     with TickerProviderStateMixin {
   late TabController _tabController;
 
-  // UI State
   String _currentTitle = 'Document Review';
   String _currentSubtitle = 'Review and manage submissions';
   bool _isMerging = false;
 
-  // Filter State
   String _selectedFilter = 'All';
   final List<String> _filters = ['All', 'Pending', 'Approved', 'Rejected'];
 
-  /// Merges all document parts into a single complete ISSP document
   Future<void> _handleMergeAllParts() async {
     if (_tabController.index == 3) {
       setState(() => _isMerging = true);
@@ -147,7 +144,6 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   }
 
-  /// Refreshes the current tab data
   Future<void> _handleRefresh() async {
     if (_tabController.index == 3) {
       setState(() {});
@@ -168,7 +164,6 @@ class _DocumentReviewState extends State<DocumentReview>
     super.dispose();
   }
 
-  /// Updates the app bar title and subtitle based on the current tab
   void _updateTitle() {
     if (!_tabController.indexIsChanging) {
       setState(() {
@@ -201,7 +196,6 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   }
 
-  /// Converts a DOCX file to HTML for preview
   Future<String?> _convertDocxToHtml(Uint8List bytes, String filename) async {
     final uri = Uri.parse('${Config.serverUrl}/convert-docx');
     final request = http.MultipartRequest('POST', uri)
@@ -217,7 +211,6 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   }
 
-  /// Opens a document preview dialog with HTML content
   Future<void> _viewDocument(
       BuildContext context, String documentId, String sectionId) async {
     try {
@@ -318,43 +311,65 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   }
 
-  /// Downloads a document file to the user's device
   Future<void> _downloadDocument(
       BuildContext context, String documentId, String sectionId) async {
     try {
       final storage = FirebaseStorage.instance;
-      final ref = storage.ref().child('$documentId/$sectionId/document.docx');
+      final downloadPath = '$documentId/$sectionId/document.docx';
+      final ref = storage.ref().child(downloadPath);
+      
+      try {
+        await ref.getMetadata();
+      } catch (metadataError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Document not found in storage: $sectionId'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      
       final bytes = await ref.getData();
       if (bytes != null) {
+        final downloadFileName = '${sectionId}_document.docx';
+        
         if (kIsWeb) {
           await FileSaver.instance.saveFile(
-            name: '${sectionId}_document.docx',
+            name: downloadFileName,
             bytes: bytes,
             mimeType: MimeType.microsoftWord,
           );
         } else {
           final directory = await getApplicationDocumentsDirectory();
-          final file = File('${directory.path}/${sectionId}_document.docx');
+          final file = File('${directory.path}/$downloadFileName');
           await file.writeAsBytes(bytes);
         }
+        
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Document downloaded successfully'),
+          SnackBar(
+            content: Text('Document downloaded successfully from storage: $sectionId'),
             backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to download document: No data received from storage'),
+            backgroundColor: Colors.red,
           ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error downloading document: $e'),
+          content: Text('Error downloading document from storage: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  /// Updates the screening status of a document section (approve/reject)
   Future<void> _updateScreeningStatus(
       BuildContext context, DocumentSnapshot section, bool approved,
       {String? rejectionMessage}) async {
@@ -402,7 +417,6 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   }
 
-  /// Finalizes a document section, marking it as complete
   Future<void> _finalizeSection(
       BuildContext context, String sectionId, String sectionName) async {
     try {
@@ -421,7 +435,6 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   }
 
-  /// Shows a dialog for rejecting a document section with a reason
   Future<void> _showRejectionDialog(
       BuildContext context, DocumentSnapshot section) async {
     final TextEditingController _controller = TextEditingController();
@@ -435,7 +448,6 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   }
 
-  /// Shows a dialog for revising a document section
   Future<void> _showReviseDialog(BuildContext context, DocumentSnapshot doc,
       Map<String, dynamic> data) async {
     try {
@@ -468,14 +480,12 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   } 
 
-  /// Uploads a revised document to replace the current one
   Future<void> _uploadRevisedDocument(BuildContext context, String sectionId,
       String sectionName, String yearRange) async {
     try {
       print(
           'Starting upload for section: $sectionName, ID: $sectionId, Year: $yearRange');
 
-      // Show loading indicator
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Selecting new document...'),
@@ -483,7 +493,6 @@ class _DocumentReviewState extends State<DocumentReview>
         ),
       );
 
-      // Pick file
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['docx'],
@@ -511,7 +520,6 @@ class _DocumentReviewState extends State<DocumentReview>
         return;
       }
 
-      // Show uploading message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Uploading revised document...'),
@@ -519,9 +527,8 @@ class _DocumentReviewState extends State<DocumentReview>
         ),
       );
 
-      // Upload to Firebase Storage
       final storage = FirebaseStorage.instance;
-      final storagePath = '$yearRange/$sectionId/${file.name}';
+      final storagePath = '$yearRange/$sectionId/document.docx';
       final storageRef = storage.ref().child(storagePath);
 
       Uint8List fileBytes;
@@ -537,7 +544,6 @@ class _DocumentReviewState extends State<DocumentReview>
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
-      // Update Firestore document
       await FirebaseFirestore.instance
           .collection('issp_documents')
           .doc(yearRange)
@@ -545,20 +551,19 @@ class _DocumentReviewState extends State<DocumentReview>
           .doc(sectionId)
           .update({
         'fileUrl': downloadUrl,
-        'fileName': file.name,
+        'fileName': 'document.docx',
         'uploadedAt': FieldValue.serverTimestamp(),
         'uploadedBy': await getCurrentUsername(),
-        'isFinalized': false, // Reset finalization status
-        'screening': null, // Reset screening status
+        'isFinalized': false,
+        'screening': true,
         'screenedBy': null,
         'screeningDate': null,
         'rejectionMessage': null,
       });
 
-      // Success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Document revised successfully for $sectionName'),
+          content: Text('Document revised successfully for $sectionName and set for screening'),
           backgroundColor: Colors.green,
         ),
       );
@@ -573,7 +578,6 @@ class _DocumentReviewState extends State<DocumentReview>
     }
   }
 
-  /// Builds a status chip widget with appropriate colors and icons
   Widget _buildStatusChip(String status) {
     Color color;
     IconData icon;
@@ -639,7 +643,6 @@ class _DocumentReviewState extends State<DocumentReview>
     );
   }
 
-  /// Builds a section card widget with actions and status
   Widget _buildSectionCard(
       BuildContext context, DocumentSnapshot doc, Map<String, dynamic> data,
       {bool showReviseButton = true}) {
@@ -836,15 +839,18 @@ class _DocumentReviewState extends State<DocumentReview>
                           const SizedBox(width: 16),
                           SizedBox(
                             width: 141,
-                            child: _buildActionButton(
-                              icon: Icons.edit,
-                              label: 'Revise',
-                              color: const Color(0xff021e84),
-                              onPressed: () {
-                                print(
-                                    'Revise button pressed for section: ${doc.id}');
-                                _showReviseDialog(context, doc, data);
-                              },
+                            child: Tooltip(
+                              message: isFinalized ? 'Click to revise this document' : 'Document must be approved before revision',
+                              child: _buildActionButton(
+                                icon: Icons.edit,
+                                label: 'Revise',
+                                color: isFinalized ? const Color(0xff021e84) : Colors.grey,
+                                onPressed: isFinalized ? () {
+                                  print(
+                                      'Revise button pressed for section: ${doc.id}');
+                                  _showReviseDialog(context, doc, data);
+                                } : null,
+                              ),
                             ),
                           ),
                         ],
@@ -920,7 +926,7 @@ class _DocumentReviewState extends State<DocumentReview>
     required IconData icon,
     required String label,
     required Color color,
-    required VoidCallback onPressed,
+    VoidCallback? onPressed,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -943,7 +949,7 @@ class _DocumentReviewState extends State<DocumentReview>
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          foregroundColor: Colors.white,
+          foregroundColor: onPressed != null ? Colors.white : Colors.white.withOpacity(0.5),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -968,12 +974,10 @@ class _DocumentReviewState extends State<DocumentReview>
     );
   }
 
-  /// Formats a date for display
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  /// Checks if a document matches the current filter criteria
   bool _matchesFilter(Map<String, dynamic> data) {
     if (_selectedFilter == 'All') return true;
 

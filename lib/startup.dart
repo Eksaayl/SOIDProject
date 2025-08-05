@@ -20,7 +20,7 @@ class _StartupPageState extends State<StartupPage> {
 
   final List<_Choice> _choices = const [
     _Choice('COMMUNITY-BASED MONITORING SYSTEM (CBMS)', 'CBMS', Icons.map),
-    _Choice('CENSUS OF POPULATION AND HOUSING (POPCEN)', 'POPCEN', Icons.people),
+    _Choice('CENSUS OF POPULATION AND HOUSING (CPH)', 'CPH', Icons.people),
     _Choice('CENSUS OF AGRICULTURE AND FISHERIES (CAF)', 'CAF', Icons.agriculture),
     _Choice('PHILIPPINE IDENTIFICATION SYSTEM (PHILSYS)', 'PHILSYS', Icons.fingerprint),
     _Choice('FAMILY INCOME AND EXPENDITURE SURVEY (FIES)', 'FIES', Icons.attach_money),

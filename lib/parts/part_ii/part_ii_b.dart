@@ -78,6 +78,11 @@ class _PartIIBState extends State<PartIIB> {
     }
   }
 
+  bool _canAccess() {
+    final role = _userRole.toLowerCase();
+    return role == 'admin' || role == 'itds';
+  }
+
   Future<void> _loadContent() async {
     try {
       final doc = await _sectionRef.get();
@@ -241,17 +246,6 @@ class _PartIIBState extends State<PartIIB> {
     setState(() {});
   }
 
-  void updateSystemNamePrefixes() {
-    for (var i = 0; i < systemControllers.length; i++) {
-      final systemNumber = 'IS${(i + 1).toString().padLeft(2, '0')}';
-      final controller = systemControllers[i]['name_of_system']!;
-      final text = controller.text;
-      final regex = RegExp(r'^(IS\d{2}\.\s*)+');
-      final cleanValue = text.replaceFirst(regex, '').trim();
-      controller.text = '$systemNumber. ${cleanValue.isNotEmpty ? cleanValue : ''}';
-    }
-  }
-
   void removeSystem(int index) {
     systemControllers.removeAt(index);
     setState(() {});
@@ -271,14 +265,13 @@ class _PartIIBState extends State<PartIIB> {
   }
 
   Widget systemTableForm(Map<String, TextEditingController> controllers, int index) {
-    final systemNumber = 'IS${(index + 1).toString().padLeft(2, '0')}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('$systemNumber - Information System ${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text('IS - Information System ${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             if (!_isFinalized && systemControllers.length > 1)
               IconButton(
                 icon: const Icon(Icons.delete, color: Colors.red),
@@ -302,7 +295,7 @@ class _PartIIBState extends State<PartIIB> {
                     Text('NAME OF INFORMATION SYSTEM/ SUB-SYSTEM', style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(width: 4),
                     Tooltip(
-                      message: 'Enter the name of the information system or sub-system. Example: $systemNumber - Enterprise Resource Planning System',
+                      message: 'Enter the name of the information system or sub-system. Example: IS - Enterprise Resource Planning System',
                       child: Icon(Icons.help_outline, size: 18, color: Colors.blueGrey),
                     ),
                   ],
@@ -314,15 +307,13 @@ class _PartIIBState extends State<PartIIB> {
                   controller: controllers['name_of_system'],
                   enabled: !_isFinalized,
                   decoration: InputDecoration(
-                    hintText: 'Enter system name (IS number will be added automatically)',
+                    hintText: 'Enter system name (IS will be added automatically)',
                   ),
                   onChanged: (value) {
-                    final systemNumber = 'IS${(index + 1).toString().padLeft(2, '0')}. ';
-                    if (!value.startsWith(systemNumber)) {
-                      final regex = RegExp(r'^(IS\d{2}\.\s*)+');
-                      final cleanValue = value.replaceFirst(regex, '');
-                      controllers['name_of_system']!.text = systemNumber + cleanValue;
-                      controllers['name_of_system']!.selection = TextSelection.collapsed(offset: systemNumber.length);
+                    if (!value.startsWith('IS ')) {
+                      final cleanValue = value.replaceFirst(RegExp(r'^IS\s*'), '');
+                      controllers['name_of_system']!.text = 'IS ' + cleanValue;
+                      controllers['name_of_system']!.selection = TextSelection.collapsed(offset: 3);
                     }
                   },
                 ),
@@ -546,6 +537,36 @@ class _PartIIBState extends State<PartIIB> {
 
   @override
   Widget build(BuildContext context) {
+    // Check access permission
+    if (!_canAccess()) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Access Denied'),
+          backgroundColor: Colors.red,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock, size: 64, color: Colors.red),
+              SizedBox(height: 16),
+              Text(
+                'Access Denied',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'You do not have permission to access Part II.B.\nOnly Admin and ITDS users can access this section.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return WillPopScope(
       onWillPop: () async {
         if (_hasUnsavedChanges) {
@@ -683,17 +704,7 @@ class _PartIIBState extends State<PartIIB> {
                         ),
                         const SizedBox(height: 24),
                         if (_userRole == 'admin')
-                          ReorderableListView(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            onReorder: (oldIndex, newIndex) {
-                              setState(() {
-                                if (newIndex > oldIndex) newIndex -= 1;
-                                final item = systemControllers.removeAt(oldIndex);
-                                systemControllers.insert(newIndex, item);
-                                updateSystemNamePrefixes();
-                              });
-                            },
+                          Column(
                             children: [
                               for (final entry in systemControllers.asMap().entries)
                                 Container(

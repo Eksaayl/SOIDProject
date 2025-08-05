@@ -15,6 +15,7 @@ import 'dart:typed_data';
 import '../config.dart';
 import '../state/selection_model.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class Part2 extends StatefulWidget {
   const Part2({super.key});
@@ -27,6 +28,47 @@ class _Part2State extends State<Part2> {
   int _selectedIndex = -1;
   bool _isCompiling = false;
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
+  String _userRole = '';
+  bool _hasLoadedRole = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserRole();
+  }
+
+  Future<void> _fetchUserRole() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      setState(() {
+        _userRole = userDoc.data()?['role'] ?? '';
+        _hasLoadedRole = true;
+      });
+    }
+  }
+
+  bool _canAccessSection(String section) {
+    if (!_hasLoadedRole) return false;
+    
+    final role = _userRole.toLowerCase();
+    
+    if (section == 'II.A' || section == 'II.B' || section == 'II.C') {
+      return role == 'admin' || role == 'itds';
+    }
+    
+    if (section == 'II.D') {
+      return role == 'admin' || role == 'itds' || role == 'editor';
+    }
+    
+    return false;
+  }
+
+  bool _canMerge() {
+    if (!_hasLoadedRole) return false;
+    final role = _userRole.toLowerCase();
+    return role == 'admin';
+  }
 
   Future<void> uploadGeneratedDocxToStorage(String documentId, String part, List<int> docxBytes) async {
     final storage = FirebaseStorage.instance;
@@ -128,6 +170,13 @@ class _Part2State extends State<Part2> {
   Widget build(BuildContext context) {
     bool isSmallScreen = MediaQuery.of(context).size.width < 650;
 
+    // Show loading while fetching user role
+    if (!_hasLoadedRole) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return isSmallScreen
         ? Center(
             child: Padding(
@@ -150,18 +199,24 @@ class _Part2State extends State<Part2> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _buildTopButton('Part II.A', Icons.insights, 0),
-                          const SizedBox(width: 16),
-                          _buildTopButton('Part II.B', Icons.book, 1),
+                          if (_canAccessSection('II.A'))
+                            _buildTopButton('Part II.A', Icons.insights, 0),
+                          if (_canAccessSection('II.A') && _canAccessSection('II.B'))
+                            const SizedBox(width: 16),
+                          if (_canAccessSection('II.B'))
+                            _buildTopButton('Part II.B', Icons.book, 1),
                         ],
                       ),
                       const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _buildTopButton('Part II.C', Icons.storage, 2),
-                          const SizedBox(width: 16),
-                          _buildTopButton('Part II.D', Icons.network_cell, 3),
+                          if (_canAccessSection('II.C'))
+                            _buildTopButton('Part II.C', Icons.storage, 2),
+                          if (_canAccessSection('II.C') && _canAccessSection('II.D'))
+                            const SizedBox(width: 16),
+                          if (_canAccessSection('II.D'))
+                            _buildTopButton('Part II.D', Icons.network_cell, 3),
                         ],
                       ),
                     ],
@@ -169,7 +224,7 @@ class _Part2State extends State<Part2> {
                   const SizedBox(height: 24),
                   if (_isCompiling)
                     const CircularProgressIndicator()
-                  else
+                  else if (_canMerge())
                     ElevatedButton.icon(
                       onPressed: () => mergePartIIDocuments(context, _yearRange),
                       icon: const Icon(Icons.merge_type),
@@ -199,19 +254,26 @@ class _Part2State extends State<Part2> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildTopButton('Part II.A', Icons.insights, 0),
-                  const SizedBox(width: 16),
-                  _buildTopButton('Part II.B', Icons.book, 1),
-                  const SizedBox(width: 16),
-                  _buildTopButton('Part II.C', Icons.storage, 2),
-                  const SizedBox(width: 16),
-                  _buildTopButton('Part II.D', Icons.network_cell, 3),
+                  if (_canAccessSection('II.A'))
+                    _buildTopButton('Part II.A', Icons.insights, 0),
+                  if (_canAccessSection('II.A') && _canAccessSection('II.B'))
+                    const SizedBox(width: 16),
+                  if (_canAccessSection('II.B'))
+                    _buildTopButton('Part II.B', Icons.book, 1),
+                  if (_canAccessSection('II.B') && _canAccessSection('II.C'))
+                    const SizedBox(width: 16),
+                  if (_canAccessSection('II.C'))
+                    _buildTopButton('Part II.C', Icons.storage, 2),
+                  if (_canAccessSection('II.C') && _canAccessSection('II.D'))
+                    const SizedBox(width: 16),
+                  if (_canAccessSection('II.D'))
+                    _buildTopButton('Part II.D', Icons.network_cell, 3),
                 ],
               ),
               const SizedBox(height: 24),
               if (_isCompiling)
                 const CircularProgressIndicator()
-              else
+              else if (_canMerge())
                 ElevatedButton.icon(
                   onPressed: () => mergePartIIDocuments(context, _yearRange),
                   icon: const Icon(Icons.merge_type),
@@ -230,6 +292,27 @@ class _Part2State extends State<Part2> {
   }
 
   Widget _buildTopButton(String text, IconData icon, int index) {
+    String section = '';
+    switch (index) {
+      case 0:
+        section = 'II.A';
+        break;
+      case 1:
+        section = 'II.B';
+        break;
+      case 2:
+        section = 'II.C';
+        break;
+      case 3:
+        section = 'II.D';
+        break;
+    }
+
+    // Double-check access permission
+    if (!_canAccessSection(section)) {
+      return const SizedBox.shrink();
+    }
+
     return ElevatedButton.icon(
       onPressed: () {
         setState(() => _selectedIndex = index);

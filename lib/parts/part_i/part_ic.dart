@@ -248,6 +248,16 @@ class _PartICFormPageState extends State<PartICFormPage> {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(source: ImageSource.gallery);
       if (pickedFile != null) {
+        final fileName = pickedFile.name.toLowerCase();
+        if (!fileName.endsWith('.jpg') && !fileName.endsWith('.jpeg') && !fileName.endsWith('.png')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select only JPEG (.jpg/.jpeg) or PNG (.png) files.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
         final bytes = await pickedFile.readAsBytes();
         setState(() => _pickedBytes = bytes);
       }

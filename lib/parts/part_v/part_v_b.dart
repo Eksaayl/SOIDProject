@@ -101,15 +101,24 @@ class _PartVBState extends State<PartVB> {
       );
 
       if (result != null) {
-        final bytes = result.files.first.bytes;
+        final file = result.files.first;
+        final fileName = file.name.toLowerCase();
+        if (!fileName.endsWith('.jpg') && !fileName.endsWith('.jpeg') && !fileName.endsWith('.png')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select only JPEG (.jpg/.jpeg) or PNG (.png) files.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        final bytes = file.bytes;
         if (bytes != null) {
           final imageRef = _storage.ref().child('$_yearRange/V.B/isis.png');
           await imageRef.putData(bytes);
-          
           setState(() {
             _isisBytes = bytes;
           });
-
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('IS Implementation Schedule image uploaded successfully'))
           );

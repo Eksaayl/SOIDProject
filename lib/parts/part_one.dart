@@ -291,6 +291,29 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if (_userRole == 'editor')
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => PartIEFormPage(documentId: _yearRange),
+                      ));
+                    },
+                    icon: const Icon(Icons.computer, color: Colors.white),
+                    label: const Text(
+                      'Part I.E',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xff021e84),
+                      side: const BorderSide(color: Colors.black),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                if (_userRole == 'editor') const SizedBox(height: 16),
                 Text(
                   'Your current role is: $_userRole',
                   style: const TextStyle(

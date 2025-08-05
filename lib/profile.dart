@@ -24,11 +24,18 @@ class _ProfilePageState extends State<ProfilePage> {
   String _currentMobile = '';
   String _currentProfilePictureURL = '';
   bool _isLoading = false;
+  bool _showUsernameHelp = false;
+  bool _isUserTyping = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _usernameController.addListener(() {
+      setState(() {
+        _showUsernameHelp = _usernameController.text.isNotEmpty && _isUserTyping;
+      });
+    });
   }
 
   @override
@@ -58,7 +65,7 @@ class _ProfilePageState extends State<ProfilePage> {
             _currentUsername = data['username'] ?? '';
             _currentDivision = data['service'] ?? '';
             _currentMobile = data['mobile'] ?? '';
-            _currentProfilePictureURL = data['profilePictureURL'] ?? '';
+            _currentProfilePictureURL = data['photoURL'] ?? data['profilePictureURL'] ?? '';
             _usernameController.text = _currentUsername;
             _divisionController.text = _currentDivision;
             _mobileController.text = _currentMobile;
@@ -84,6 +91,16 @@ class _ProfilePageState extends State<ProfilePage> {
       final picker = ImagePicker();
       final picked = await picker.pickImage(source: ImageSource.camera);
       if (picked != null) {
+        final fileName = picked.name.toLowerCase();
+        if (!fileName.endsWith('.jpg') && !fileName.endsWith('.jpeg') && !fileName.endsWith('.png')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select only JPEG (.jpg/.jpeg) or PNG (.png) files.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
         final bytes = await picked.readAsBytes();
         setState(() {
           _pickedImage = bytes;
@@ -137,7 +154,7 @@ class _ProfilePageState extends State<ProfilePage> {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .update({'profilePictureURL': downloadURL});
+            .update({'photoURL': downloadURL});
 
         Navigator.of(context).pop();
 
@@ -1099,6 +1116,11 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: 20),
                   TextField(
                     controller: _usernameController,
+                    onTap: () {
+                      setState(() {
+                        _isUserTyping = true;
+                      });
+                    },
                     decoration: InputDecoration(
                       labelText: 'New Username',
                       hintText: 'Enter your new username',
@@ -1120,6 +1142,38 @@ class _ProfilePageState extends State<ProfilePage> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                     ),
                   ),
+                  if (_showUsernameHelp)
+                    Container(
+                      margin: const EdgeInsets.only(top: 8, left: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff021e84).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xff021e84).withOpacity(0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: const Color(0xff021e84),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Please follow a standardized format: "Juan Dela Cruz" → "j.delacruz" or "John Philip Cruz" → "jp.cruz"',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: const Color(0xff021e84),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 20),
                   Container(
                     decoration: BoxDecoration(

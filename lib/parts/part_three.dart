@@ -39,6 +39,11 @@ class _Part3State extends State<Part3> {
   String _userRole = '';
   Timer? _refreshTimer;
 
+  bool _canMerge() {
+    final role = _userRole.toLowerCase();
+    return role == 'admin';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -675,7 +680,7 @@ class _Part3State extends State<Part3> {
                     const SizedBox(height: 24),
                     if (_isCompiling)
                       const CircularProgressIndicator()
-                    else
+                    else if (_canMerge())
                       ElevatedButton.icon(
                         onPressed: () => mergePartIIIDocuments(context, _yearRange),
                         icon: const Icon(Icons.merge_type),
@@ -720,7 +725,7 @@ class _Part3State extends State<Part3> {
                 const SizedBox(height: 24),
                 if (_isCompiling)
                   const CircularProgressIndicator()
-                else
+                else if (_canMerge())
                   ElevatedButton.icon(
                     onPressed: () => mergePartIIIDocuments(context, _yearRange),
                     icon: const Icon(Icons.merge_type),
@@ -850,7 +855,7 @@ class _Part3State extends State<Part3> {
             const SizedBox(height: 24),
             if (_isCompiling)
               const CircularProgressIndicator()
-            else
+            else if (_canMerge())
               ElevatedButton.icon(
                 onPressed: () => mergePartIIIDocuments(context, _yearRange),
                 icon: const Icon(Icons.merge_type),
@@ -955,7 +960,7 @@ class _Part3State extends State<Part3> {
         const SizedBox(height: 24),
         if (_isCompiling)
           const CircularProgressIndicator()
-        else
+        else if (_canMerge())
           ElevatedButton.icon(
             onPressed: () => mergePartIIIDocuments(context, _yearRange),
             icon: const Icon(Icons.merge_type),
