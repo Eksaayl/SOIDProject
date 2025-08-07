@@ -765,7 +765,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          _showProfilePicture(context, username, data['profilePictureURL'] as String?, data);
+                          _showProfilePicture(context, username, data['photoURL'] ?? data['profilePictureURL'] as String?, data);
                         },
                         icon: const Icon(Icons.photo_camera, size: 18),
                         label: const Text('View Profile'),
@@ -1108,7 +1108,7 @@ class _ManageUsersPageState extends State<ManageUsersPage> {
                           flex: 1,
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              _showProfilePicture(context, username, data['profilePictureURL'] as String?, data);
+                              _showProfilePicture(context, username, data['photoURL'] ?? data['profilePictureURL'] as String?, data);
                             },
                             icon: const Icon(Icons.photo_camera, size: 16),
                             label: const Text('View'),

@@ -921,7 +921,6 @@ class _DocumentReviewState extends State<DocumentReview>
     );
   }
 
-  /// Builds a styled action button with gradient background
   Widget _buildActionButton({
     required IconData icon,
     required String label,

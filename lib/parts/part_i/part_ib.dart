@@ -407,7 +407,6 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         imageQuality: 100,
       );
       if (x != null) {
-        // Check file extension to ensure it's JPEG or PNG
         final fileName = x.name.toLowerCase();
         if (!fileName.endsWith('.jpg') && 
             !fileName.endsWith('.jpeg') && 
@@ -571,7 +570,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
         otherFundsText += otherFundsControllers.map((controllers) {
           final projectName = controllers['projectName']?.text.trim() ?? '';
           final projectCost = controllers['projectCost']?.text.trim() ?? '';
-          return '  $projectName - Project Cost: PhP ${projectCost}';  // Two spaces for indentation, no bullet
+          return '  $projectName - Project Cost: PhP ${projectCost}'; 
         }).join('\n');
       }
 
@@ -720,7 +719,7 @@ class _PartIBFormPageState extends State<PartIBFormPage> {
   Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
-      final fileName = 'document.docx';
+      final fileName = 'Part_IB.docx';
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/I.B/document.docx');
       final docxBytes = await docxRef.getData();

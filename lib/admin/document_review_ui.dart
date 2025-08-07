@@ -9,22 +9,18 @@ import '../admin_route_guard.dart';
 import '../utils/dialog_utils.dart';
 
 class DocumentReviewUI extends StatelessWidget {
-  // UI State
   final TabController tabController;
   final String currentTitle;
   final String currentSubtitle;
   final bool isMerging;
 
-  // Filter State
   final String selectedFilter;
   final List<String> filters;
 
-  // Callbacks
   final VoidCallback onMergeAllParts;
   final VoidCallback onRefresh;
   final Function(String) onFilterChanged;
 
-  // Build Functions
   final Widget Function(BuildContext, DocumentSnapshot, Map<String, dynamic>,
       {bool showReviseButton}) buildSectionCard;
   final bool Function(Map<String, dynamic>) matchesFilter;

@@ -248,7 +248,6 @@ class _MergeDashboardState extends State<MergeDashboard> {
                 children: [
                   SizedBox(height: isTinyScreen ? 4 : (isSmallScreen ? 8 : 16)),
                   
-                  // Compact header for small screens
                   if (isTinyScreen) ...[
                     Row(
                       children: [

@@ -345,7 +345,7 @@ class _PartIVBState extends State<PartIVB> {
   Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
-      final fileName = 'document.docx';
+      final fileName = 'Part_IVB.docx';
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/IV.B/document.docx');
       final docxBytes = await docxRef.getData();

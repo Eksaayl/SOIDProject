@@ -416,7 +416,7 @@ class _PartIAFormPageState extends State<PartIAFormPage> {
   Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
-      final fileName = 'document.docx';
+      final fileName = 'Part_IA.docx';
       if (_uploadedDocxBytes != null) {
         if (kIsWeb) {
           await FileSaver.instance.saveFile(

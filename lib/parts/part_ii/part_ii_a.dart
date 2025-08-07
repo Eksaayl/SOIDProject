@@ -437,7 +437,7 @@ class _PartIIAState extends State<PartIIA> {
   Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
-      final fileName = 'document.docx';
+      final fileName = 'Part_IIA.docx';
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/II.A/document.docx');
       final docxBytes = await docxRef.getData();
@@ -611,7 +611,6 @@ class _PartIIAState extends State<PartIIA> {
 
   @override
   Widget build(BuildContext context) {
-    // Check access permission
     if (!_canAccess()) {
       return Scaffold(
         appBar: AppBar(

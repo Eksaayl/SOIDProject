@@ -16,6 +16,7 @@ import 'part_v/part_v_a.dart';
 import 'part_v/part_v_b.dart';
 import 'part_v/part_v_c.dart';
 import 'part_v/part_v_d.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class Part5 extends StatefulWidget {
   const Part5({super.key});
@@ -27,14 +28,68 @@ class Part5 extends StatefulWidget {
 class _Part5State extends State<Part5> {
   int _selectedIndex = -1;
   bool _isMerging = false;
+  String _userRole = '';
+  bool _hasLoadedRole = false;
 
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
   final _storage = FirebaseStorage.instance;
   final _firestore = FirebaseFirestore.instance;
 
   @override
+  void initState() {
+    super.initState();
+    _fetchUserRole();
+  }
+
+  Future<void> _fetchUserRole() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      setState(() {
+        _userRole = userDoc.data()?['role'] ?? '';
+        _hasLoadedRole = true;
+      });
+    }
+  }
+
+  bool _canAccessSection(String section) {
+    if (!_hasLoadedRole) return false;
+    
+    final role = _userRole.toLowerCase();
+    
+    if (section == 'V.A') {
+      return role == 'admin' || role == 'itds' || role == 'editor';
+    }
+    
+    if (section == 'V.B') {
+      return role == 'admin' || role == 'itds' || role == 'editor';
+    }
+    
+    if (section == 'V.C') {
+      return role == 'admin' || role == 'itds';
+    }
+    
+    if (section == 'V.D') {
+      return role == 'admin';
+    }
+    
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     bool isSmallScreen = MediaQuery.of(context).size.width < 650;
+
+    if (!_hasLoadedRole) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final canAccessVA = _canAccessSection('V.A');
+    final canAccessVB = _canAccessSection('V.B');
+    final canAccessVC = _canAccessSection('V.C');
+    final canAccessVD = _canAccessSection('V.D');
 
     return isSmallScreen
         ? Center(
@@ -59,22 +114,22 @@ class _Part5State extends State<Part5> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildTopButton('Part V.A', Icons.calendar_today, 0),
-                    const SizedBox(width: 16),
-                    _buildTopButton('Part V.B', Icons.event, 1),
+                    if (canAccessVA) _buildTopButton('Part V.A', Icons.calendar_today, 0),
+                    if (canAccessVA && canAccessVB) const SizedBox(width: 16),
+                    if (canAccessVB) _buildTopButton('Part V.B', Icons.event, 1),
                   ],
                 ),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildTopButton('Part V.C', Icons.attach_money, 2),
-                    const SizedBox(width: 16),
-                    _buildTopButton('Part V.D', Icons.pie_chart_outline, 3),
+                    if (canAccessVC) _buildTopButton('Part V.C', Icons.attach_money, 2),
+                    if (canAccessVC && canAccessVD) const SizedBox(width: 16),
+                    if (canAccessVD) _buildTopButton('Part V.D', Icons.pie_chart_outline, 3),
                   ],
                 ),
                 const SizedBox(height: 24),
-                _buildMergeButton(),
+                if (canAccessVA && canAccessVB && canAccessVC && canAccessVD && _userRole == 'admin') _buildMergeButton(),
               ],
             ),
           ],
@@ -94,17 +149,17 @@ class _Part5State extends State<Part5> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildTopButton('Part V.A', Icons.calendar_today, 0),
-            const SizedBox(width: 16),
-            _buildTopButton('Part V.B', Icons.event, 1),
-            const SizedBox(width: 16),
-            _buildTopButton('Part V.C', Icons.attach_money, 2),
-            const SizedBox(width: 16),
-            _buildTopButton('Part V.D', Icons.pie_chart_outline, 3),
+            if (canAccessVA) _buildTopButton('Part V.A', Icons.calendar_today, 0),
+            if (canAccessVA && canAccessVB) const SizedBox(width: 16),
+            if (canAccessVB) _buildTopButton('Part V.B', Icons.event, 1),
+            if (canAccessVB && canAccessVC) const SizedBox(width: 16),
+            if (canAccessVC) _buildTopButton('Part V.C', Icons.attach_money, 2),
+            if (canAccessVC && canAccessVD) const SizedBox(width: 16),
+            if (canAccessVD) _buildTopButton('Part V.D', Icons.pie_chart_outline, 3),
           ],
         ),
         const SizedBox(height: 24),
-        _buildMergeButton(),
+        if (canAccessVA && canAccessVB && canAccessVC && canAccessVD && _userRole == 'admin') _buildMergeButton(),
       ],
     );
   }

@@ -298,7 +298,7 @@ class _PartIICState extends State<PartIIC> {
   Future<void> _downloadDocx() async {
     setState(() => _generating = true);
     try {
-      final fileName = 'document.docx';
+      final fileName = 'Part_IIC.docx';
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/II.C/document.docx');
       final docxBytes = await docxRef.getData();
@@ -411,7 +411,7 @@ class _PartIICState extends State<PartIIC> {
                   onChanged: (value) {
                     if (!value.startsWith('DB ')) {
                       final cleanValue = value.replaceFirst(RegExp(r'^DB\s*'), '');
-                      controllers['name_of_database']!.text = 'DB ' + cleanValue;
+                      controllers['name_of_database']!.text = 'DB. ' + cleanValue;
                       controllers['name_of_database']!.selection = TextSelection.collapsed(offset: 3);
                     }
                   },
@@ -600,7 +600,6 @@ class _PartIICState extends State<PartIIC> {
 
   @override
   Widget build(BuildContext context) {
-    // Check access permission
     if (!_canAccess()) {
       return Scaffold(
         appBar: AppBar(

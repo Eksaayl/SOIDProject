@@ -514,7 +514,6 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
-    // Validate Philippine mobile number format
     final phoneRegex = RegExp(r'^(\+63|0)?9\d{9}$');
     if (!phoneRegex.hasMatch(newMobile.replaceAll(RegExp(r'[\s\-\(\)]'), ''))) {
       ScaffoldMessenger.of(context).showSnackBar(

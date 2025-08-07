@@ -270,7 +270,7 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
                     animation: _controller,
                     builder: (context, child) {
                       return Transform.rotate(
-                        angle: _controller.value * 3.1416, // 180 degrees
+                        angle: _controller.value * 3.1416,
                         child: child,
                       );
                     },
@@ -371,7 +371,7 @@ class _Part1State extends State<Part1> with TickerProviderStateMixin {
               const SizedBox(height: 24),
               if (_isCompiling)
                 const CircularProgressIndicator()
-              else
+              else if (_userRole == 'admin')
                 ElevatedButton.icon(
                   onPressed: () => mergeCompiledAndUploadsAndDownload(context, _yearRange),
                   icon: Icon(Icons.merge_type),

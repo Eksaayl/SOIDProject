@@ -651,7 +651,7 @@ class _PartIIIBState extends State<PartIIIB> {
   Future<void> _downloadDocx() async {
     setState(() => _generating = true);
     try {
-      final fileName = 'document.docx';
+      final fileName = 'Part_IIIB.docx';
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/III.B/document.docx');
       final docxBytes = await docxRef.getData();

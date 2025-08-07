@@ -170,7 +170,6 @@ class _Part2State extends State<Part2> {
   Widget build(BuildContext context) {
     bool isSmallScreen = MediaQuery.of(context).size.width < 650;
 
-    // Show loading while fetching user role
     if (!_hasLoadedRole) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -308,7 +307,6 @@ class _Part2State extends State<Part2> {
         break;
     }
 
-    // Double-check access permission
     if (!_canAccessSection(section)) {
       return const SizedBox.shrink();
     }

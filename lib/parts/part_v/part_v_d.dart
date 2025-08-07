@@ -451,7 +451,7 @@ class _PartVDFormPageState extends State<PartVDFormPage> {
 
     setState(() => _compiling = true);
     try {
-      final fileName = _fileName ?? 'Part_V_D_Summary_of_Budget.docx';
+      final fileName = _fileName ?? 'Part_VD.docx';
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
           name: fileName,

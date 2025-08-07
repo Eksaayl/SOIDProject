@@ -304,7 +304,7 @@ class _PartVBState extends State<PartVB> {
   Future<void> _downloadDocx() async {
     setState(() => _compiling = true);
     try {
-      final fileName = 'document.docx';
+      final fileName = 'Part_VB.docx';
       final storage = FirebaseStorage.instance;
       final docxRef = storage.ref().child('$_yearRange/V.B/document.docx');
       final docxBytes = await docxRef.getData();
