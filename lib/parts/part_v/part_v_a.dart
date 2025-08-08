@@ -660,7 +660,7 @@ class _PartVAState extends State<PartVA> {
                               ),
                               const SizedBox(height: 16),
                               const Text(
-                                'Please upload an ICT Projects Implementation Schedule image for Part V.A. The image will be inserted into the generated DOCX document using the placeholder "{IPIS}". Make sure the image is clear and properly formatted before finalizing. Click the document icon in the app bar to generate a DOCX file with the image.',
+                                'Please upload an ICT Projects Implementation Schedule image for Part V.A. The image will be displayed in the generated DOCX document. Make sure the image is clear and properly formatted before finalizing. Click the download icon in the app bar to generate a DOCX file with the uploaded image.',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Color(0xFF4A5568),

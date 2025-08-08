@@ -142,6 +142,7 @@ class _LoginPageState extends State<LoginPage> {
           await _firestore.collection('users').doc(user.uid).set({
             'username': user.displayName ?? '',
             'email': user.email ?? '',
+            'photoURL': user.photoURL ?? '',
             'role': 'user',
             'createdAt': FieldValue.serverTimestamp(),
           });

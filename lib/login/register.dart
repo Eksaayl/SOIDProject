@@ -502,7 +502,9 @@ class _RegisterPageState extends State<RegisterPage> {
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
     
-    if (_pickedImage == null) {
+    // For Google Sign-In users, they already have a photo from Google
+    // For regular users, require a photo to be taken
+    if (!widget.isGoogleSignIn && _pickedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please take a photo or select an image first'),
@@ -583,13 +585,19 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _isLoading = true);
     try {
       String? photoURL;
-      if (_pickedImage != null) {
-        photoURL = await _uploadProfilePhoto();
-      }
-
+      
       if (widget.isGoogleSignIn) {
+        // For Google Sign-In users, use the existing Google photo URL
         final user = _auth.currentUser;
         if (user == null) throw Exception('No authenticated user');
+        
+        // Use Google's photo URL if available, otherwise use uploaded photo
+        photoURL = user.photoURL;
+        if (_pickedImage != null) {
+          // If user uploaded a new photo, use that instead
+          photoURL = await _uploadProfilePhoto();
+        }
+        
         await _firestore.collection('users').doc(user.uid).set({
           'username': _usernameCtrl.text.trim(),
           'email': _emailCtrl.text.trim(),
@@ -618,6 +626,11 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       final uid = cred.user!.uid;
       debugPrint('🔑 Auth signup succeeded, uid = $uid');
+
+      // For regular registration, upload photo after user is created
+      if (_pickedImage != null) {
+        photoURL = await _uploadProfilePhoto();
+      }
 
       try {
         await _firestore.collection('users').doc(uid).set({
@@ -900,6 +913,11 @@ class _RegisterPageState extends State<RegisterPage> {
                       radius: 48,
                       backgroundImage: MemoryImage(_pickedImage!),
                     )
+                  else if (widget.isGoogleSignIn && widget.initialPhotoUrl.isNotEmpty)
+                    CircleAvatar(
+                      radius: 48,
+                      backgroundImage: NetworkImage(widget.initialPhotoUrl),
+                    )
                   else
                     CircleAvatar(
                       radius: 48,
@@ -919,22 +937,26 @@ class _RegisterPageState extends State<RegisterPage> {
                           foregroundColor: Color(0xff021e84),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '*',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                      if (!widget.isGoogleSignIn) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '*',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Photo is required',
+                    widget.isGoogleSignIn 
+                        ? 'Photo is optional (using Google profile picture)'
+                        : 'Photo is required',
                     style: TextStyle(
-                      color: Colors.red[300],
+                      color: widget.isGoogleSignIn ? Colors.white70 : Colors.red[300],
                       fontSize: 12,
                     ),
                   ),

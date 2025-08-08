@@ -61,11 +61,27 @@ class _ProfilePageState extends State<ProfilePage> {
         
         if (userDoc.exists) {
           final data = userDoc.data()!;
+          String profilePictureURL = data['photoURL'] ?? data['profilePictureURL'] ?? '';
+          
+          // If no profile picture in Firestore, try to get it from Firebase Auth user
+          if (profilePictureURL.isEmpty && user.photoURL != null) {
+            profilePictureURL = user.photoURL!;
+            // Update Firestore with the profile picture URL
+            try {
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .update({'photoURL': profilePictureURL});
+            } catch (e) {
+              debugPrint('Failed to update profile picture URL in Firestore: $e');
+            }
+          }
+          
           setState(() {
             _currentUsername = data['username'] ?? '';
             _currentDivision = data['service'] ?? '';
             _currentMobile = data['mobile'] ?? '';
-            _currentProfilePictureURL = data['photoURL'] ?? data['profilePictureURL'] ?? '';
+            _currentProfilePictureURL = profilePictureURL;
             _usernameController.text = _currentUsername;
             _divisionController.text = _currentDivision;
             _mobileController.text = _currentMobile;
