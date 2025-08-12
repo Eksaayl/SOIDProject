@@ -63,10 +63,8 @@ class _ProfilePageState extends State<ProfilePage> {
           final data = userDoc.data()!;
           String profilePictureURL = data['photoURL'] ?? data['profilePictureURL'] ?? '';
           
-          // If no profile picture in Firestore, try to get it from Firebase Auth user
           if (profilePictureURL.isEmpty && user.photoURL != null) {
             profilePictureURL = user.photoURL!;
-            // Update Firestore with the profile picture URL
             try {
               await FirebaseFirestore.instance
                   .collection('users')

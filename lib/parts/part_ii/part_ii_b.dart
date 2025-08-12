@@ -40,6 +40,141 @@ class _PartIIBState extends State<PartIIB> {
     return yearRange;
   }
   String _userRole = '';
+  
+  Set<String> _shownDuplicateWarnings = {};
+
+  List<Map<String, TextEditingController>> get _sortedSystems {
+    final sorted = List<Map<String, TextEditingController>>.from(systemControllers);
+    sorted.sort((a, b) {
+      final aName = a['name_of_system']!.text;
+      final bName = b['name_of_system']!.text;
+      
+      final aMatch = RegExp(r'^IS(\d+)').firstMatch(aName);
+      final bMatch = RegExp(r'^IS(\d+)').firstMatch(bName);
+      
+      if (aMatch != null && bMatch != null) {
+        final aNum = int.parse(aMatch.group(1)!);
+        final bNum = int.parse(bMatch.group(1)!);
+        return aNum.compareTo(bNum);
+      } else if (aMatch != null) {
+        return -1;
+      } else if (bMatch != null) {
+        return 1;
+      } else {
+        return aName.compareTo(bName);
+      }
+    });
+    return sorted;
+  }
+
+  void _checkDuplicateNumbers() {
+    final numberMap = <String, int>{};
+    final duplicates = <String>[];
+    
+    for (int i = 0; i < systemControllers.length; i++) {
+      final name = systemControllers[i]['name_of_system']!.text;
+      final match = RegExp(r'^IS(\d+)').firstMatch(name);
+      if (match != null) {
+        final number = match.group(1)!;
+        if (numberMap.containsKey(number)) {
+          duplicates.add(number);
+        } else {
+          numberMap[number] = i;
+        }
+      }
+    }
+    
+    _clearResolvedWarnings(duplicates);
+    
+    if (duplicates.isNotEmpty && mounted) {
+      final uniqueDuplicates = duplicates.toSet();
+      final newWarnings = uniqueDuplicates.where((number) => !_shownDuplicateWarnings.contains(number)).toSet();
+      
+      if (newWarnings.isNotEmpty) {
+        _shownDuplicateWarnings.addAll(newWarnings);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Warning: Duplicate numbers detected: ${newWarnings.join(', ')}'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  void _clearResolvedWarnings(List<String> currentDuplicates) {
+    final currentDuplicateSet = currentDuplicates.toSet();
+    _shownDuplicateWarnings.removeWhere((number) => !currentDuplicateSet.contains(number));
+  }
+
+  void _autoCreateDatabaseIfNeeded(String systemName) async {
+    final numberMatch = RegExp(r'^IS(\d+)').firstMatch(systemName);
+    if (numberMatch == null) return;
+    
+    final systemNumber = numberMatch.group(1)!;
+    
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+      final sectionRef = FirebaseFirestore.instance
+          .collection('issp_documents')
+          .doc(yearRange)
+          .collection('sections')
+          .doc('II.C');
+      
+      final doc = await sectionRef.get();
+      final data = doc.data() as Map<String, dynamic>?;
+      final databases = List<Map<String, dynamic>>.from(data?['databases'] ?? []);
+      
+      final existingDatabase = databases.any((db) => 
+        db['name_of_database']?.toString().startsWith('DB$systemNumber - ') == true
+      );
+      
+      if (!existingDatabase) {
+        final newDatabase = {
+          'name_of_database': 'DB$systemNumber - ',
+          'general_contents': [],
+          'status': '',
+          'info_systems_served': '',
+          'data_archiving': '',
+          'users_internal': [],
+          'users_external': '',
+          'owner': ''
+        };
+        
+        databases.add(newDatabase);
+        
+        await sectionRef.set({
+          'databases': databases,
+          'modifiedBy': await getCurrentUsername(),
+          'lastModified': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Automatically created DB$systemNumber in Part IIC'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating database: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -56,6 +191,9 @@ class _PartIIBState extends State<PartIIB> {
     for (final sys in systemControllers) {
       for (final ctl in sys.values) {
         ctl.addListener(_markUnsaved);
+        if (ctl == sys['name_of_system']) {
+          ctl.addListener(() => setState(() {}));
+        }
       }
     }
   }
@@ -125,6 +263,40 @@ class _PartIIBState extends State<PartIIB> {
       final username = await getCurrentUsername();
       final doc = await _sectionRef.get();
       final formattedYearRange = formatYearRange(_yearRange);
+      
+      final systemsList = systemControllers.map((controllers) {
+        return {
+          'name_of_system': controllers['name_of_system']!.text,
+          'description': controllers['description']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+          'status': controllers['status']!.text,
+          'development_strategy': controllers['development_strategy']!.text,
+          'computing_scheme': controllers['computing_scheme']!.text,
+          'users_internal': controllers['users_internal']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
+          'users_external': controllers['users_external']!.text,
+          'owner': controllers['owner']!.text,
+        };
+      }).toList();
+
+      systemsList.sort((a, b) {
+        final aName = a['name_of_system'] as String;
+        final bName = b['name_of_system'] as String;
+        
+        final aMatch = RegExp(r'^(\d+)').firstMatch(aName);
+        final bMatch = RegExp(r'^(\d+)').firstMatch(bName);
+        
+        if (aMatch != null && bMatch != null) {
+          final aNum = int.parse(aMatch.group(1)!);
+          final bNum = int.parse(bMatch.group(1)!);
+          return aNum.compareTo(bNum);
+        } else if (aMatch != null) {
+          return -1;
+        } else if (bMatch != null) {
+          return 1;
+        } else {
+          return aName.compareTo(bName);
+        }
+      });
+
       final payload = {
         'modifiedBy': username,
         'lastModified': FieldValue.serverTimestamp(),
@@ -139,42 +311,18 @@ class _PartIIBState extends State<PartIIB> {
         payload['createdBy'] = username;
       }
 
-      payload['systems'] = systemControllers.map((controllers) {
-        return {
-          'name_of_system': controllers['name_of_system']!.text,
-          'description': controllers['description']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
-          'status': controllers['status']!.text,
-          'development_strategy': controllers['development_strategy']!.text,
-          'computing_scheme': controllers['computing_scheme']!.text,
-          'users_internal': controllers['users_internal']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
-          'users_external': controllers['users_external']!.text,
-          'owner': controllers['owner']!.text,
-        };
-      }).toList();
+      payload['systems'] = systemsList;
 
       await _sectionRef.set(payload, SetOptions(merge: true));
       setState(() => _isFinalized = finalize);
 
       try {
-        final systems = systemControllers.map((controllers) {
-          return {
-            'name_of_system': controllers['name_of_system']!.text,
-            'description': controllers['description']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
-            'status': controllers['status']!.text,
-            'development_strategy': controllers['development_strategy']!.text,
-            'computing_scheme': controllers['computing_scheme']!.text,
-            'users_internal': controllers['users_internal']!.text.split('\n').where((e) => e.trim().isNotEmpty).toList(),
-            'users_external': controllers['users_external']!.text,
-            'owner': controllers['owner']!.text,
-          };
-        }).toList();
-
         final url = Uri.parse('${Config.serverUrl}/generate-iib-docx/');
         final response = await http.post(
           url,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
-            'systems': systems,
+            'systems': systemsList,
             'yearRange': formatYearRange(_yearRange),
           }),
         );
@@ -243,12 +391,132 @@ class _PartIIBState extends State<PartIIB> {
       'users_external': TextEditingController(),
       'owner': TextEditingController(),
     });
+    
+    for (final ctl in systemControllers.last.values) {
+      ctl.addListener(_markUnsaved);
+      if (ctl == systemControllers.last['name_of_system']) {
+        ctl.addListener(() => setState(() {}));
+      }
+    }
+    
     setState(() {});
   }
 
+  void _createCorrespondingDatabase() async {
+    try {
+      final lastSystem = systemControllers.last;
+      final systemName = lastSystem['name_of_system']!.text;
+      
+      final numberMatch = RegExp(r'^IS(\d+)').firstMatch(systemName);
+      if (numberMatch == null) return;
+      
+      final systemNumber = numberMatch.group(1)!;
+      
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+      final sectionRef = FirebaseFirestore.instance
+          .collection('issp_documents')
+          .doc(yearRange)
+          .collection('sections')
+          .doc('II.C');
+      
+      final doc = await sectionRef.get();
+      final data = doc.data() as Map<String, dynamic>?;
+      final databases = List<Map<String, dynamic>>.from(data?['databases'] ?? []);
+      
+      final newDatabase = {
+        'name_of_database': 'DB$systemNumber - ',
+        'general_contents': [],
+        'status': '',
+        'info_systems_served': '',
+        'data_archiving': '',
+        'users_internal': [],
+        'users_external': '',
+        'owner': ''
+      };
+      
+      databases.add(newDatabase);
+      
+      await sectionRef.set({
+        'databases': databases,
+        'modifiedBy': await getCurrentUsername(),
+        'lastModified': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Automatically created DB$systemNumber in Part IIC'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating database: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void removeSystem(int index) {
+    _removeCorrespondingDatabase(index);
     systemControllers.removeAt(index);
     setState(() {});
+  }
+
+  void _removeCorrespondingDatabase(int systemIndex) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      
+      final yearRange = context.read<SelectionModel>().yearRange ?? '2729';
+      final sectionRef = FirebaseFirestore.instance
+          .collection('issp_documents')
+          .doc(yearRange)
+          .collection('sections')
+          .doc('II.C');
+      
+      final doc = await sectionRef.get();
+      final data = doc.data() as Map<String, dynamic>?;
+      final databases = List<Map<String, dynamic>>.from(data?['databases'] ?? []);
+      
+      if (databases.isNotEmpty) {
+        databases.removeAt(systemIndex);
+        
+        await sectionRef.set({
+          'databases': databases,
+          'modifiedBy': await getCurrentUsername(),
+          'lastModified': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Automatically removed corresponding database from Part IIC'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error removing database: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _showRemoveConfirmation(int index) async {
@@ -310,11 +578,34 @@ class _PartIIBState extends State<PartIIB> {
                     hintText: 'Enter system name (IS will be added automatically)',
                   ),
                   onChanged: (value) {
-                    if (!value.startsWith('IS ')) {
+                    if (!value.startsWith('IS')) {
                       final cleanValue = value.replaceFirst(RegExp(r'^IS\s*'), '');
-                      controllers['name_of_system']!.text = 'IS ' + cleanValue;
-                      controllers['name_of_system']!.selection = TextSelection.collapsed(offset: 3);
+                      final newValue = 'IS' + cleanValue;
+                      if (newValue != value) {
+                        controllers['name_of_system']!.text = newValue;
+                        controllers['name_of_system']!.selection = TextSelection.collapsed(offset: 2);
+                      }
+                      return;
                     }
+                    
+                    if (value.startsWith('IS') && value.length > 2) {
+                      final afterIS = value.substring(2);
+                      final numberMatch = RegExp(r'^(\d{2,})').firstMatch(afterIS);
+                      if (numberMatch != null && !value.contains(' - ')) {
+                        final number = numberMatch.group(1)!;
+                        final rest = afterIS.substring(number.length);
+                        final newValue = 'IS$number - $rest';
+                        if (newValue != value) {
+                          final currentCursor = controllers['name_of_system']!.selection.baseOffset;
+                          final cursorOffset = currentCursor + (newValue.length - value.length);
+                          controllers['name_of_system']!.text = newValue;
+                          controllers['name_of_system']!.selection = TextSelection.collapsed(offset: cursorOffset);
+                        }
+                      }
+                    }
+                    
+                    _checkDuplicateNumbers();
+                    _autoCreateDatabaseIfNeeded(value);
                   },
                 ),
               ),
@@ -705,9 +996,9 @@ class _PartIIBState extends State<PartIIB> {
                         if (_userRole == 'admin')
                           Column(
                             children: [
-                              for (final entry in systemControllers.asMap().entries)
+                              for (final entry in _sortedSystems.asMap().entries)
                                 Container(
-                                  key: ValueKey('system_${entry.key}'),
+                                  key: ValueKey('system_${systemControllers.indexOf(entry.value)}'),
                                   margin: const EdgeInsets.only(bottom: 24),
                                   padding: const EdgeInsets.all(20),
                                   decoration: BoxDecoration(
@@ -725,7 +1016,7 @@ class _PartIIBState extends State<PartIIB> {
                                   ),
                                   child: Column(
                                     children: [
-                                      systemTableForm(entry.value, entry.key),
+                                      systemTableForm(entry.value, systemControllers.indexOf(entry.value)),
                                     ],
                                   ),
                                 ),
@@ -734,7 +1025,7 @@ class _PartIIBState extends State<PartIIB> {
                         else
                           Column(
                             children: [
-                              for (final entry in systemControllers.asMap().entries)
+                              for (final entry in _sortedSystems.asMap().entries)
                                 Container(
                                   margin: const EdgeInsets.only(bottom: 24),
                                   padding: const EdgeInsets.all(20),
@@ -751,7 +1042,7 @@ class _PartIIBState extends State<PartIIB> {
                                     ],
                                     border: Border.all(color: Colors.grey.shade200),
                                   ),
-                                  child: systemTableForm(entry.value, entry.key),
+                                  child: systemTableForm(entry.value, systemControllers.indexOf(entry.value)),
                                 ),
                             ],
                           ),

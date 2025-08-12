@@ -36,6 +36,32 @@ class _PartIICState extends State<PartIIC> {
   String get _userId => _user?.displayName ?? _user?.email ?? _user?.uid ?? 'unknown';
   String get _yearRange => context.read<SelectionModel>().yearRange ?? '2729';
   String _userRole = '';
+  
+  Set<String> _shownDuplicateWarnings = {};
+
+  List<Map<String, TextEditingController>> get _sortedDatabases {
+    final sorted = List<Map<String, TextEditingController>>.from(dbControllers);
+    sorted.sort((a, b) {
+      final aName = a['name_of_database']!.text;
+      final bName = b['name_of_database']!.text;
+      
+      final aMatch = RegExp(r'^DB(\d+)').firstMatch(aName);
+      final bMatch = RegExp(r'^DB(\d+)').firstMatch(bName);
+      
+      if (aMatch != null && bMatch != null) {
+        final aNum = int.parse(aMatch.group(1)!);
+        final bNum = int.parse(bMatch.group(1)!);
+        return aNum.compareTo(bNum);
+      } else if (aMatch != null) {
+        return -1;
+      } else if (bMatch != null) {
+        return 1;
+      } else {
+        return aName.compareTo(bName);
+      }
+    });
+    return sorted;
+  }
 
   @override
   void initState() {
@@ -51,6 +77,9 @@ class _PartIICState extends State<PartIIC> {
     for (final db in dbControllers) {
       for (final ctl in db.values) {
         ctl.addListener(_markUnsaved);
+        if (ctl == db['name_of_database']) {
+          ctl.addListener(() => setState(() {}));
+        }
       }
     }
   }
@@ -102,6 +131,15 @@ class _PartIICState extends State<PartIIC> {
             });
           }
           if (dbControllers.isEmpty) addDatabase();
+        }
+        
+        for (final db in dbControllers) {
+          for (final ctl in db.values) {
+            ctl.addListener(_markUnsaved);
+            if (ctl == db['name_of_database']) {
+              ctl.addListener(() => setState(() {}));
+            }
+          }
         }
       }
     } catch (e) {
@@ -332,8 +370,9 @@ class _PartIICState extends State<PartIIC> {
   }
 
   void addDatabase() {
-    dbControllers.add({
-      'name_of_database': TextEditingController(),
+    final index = dbControllers.length;
+    final newDatabase = {
+      'name_of_database': TextEditingController(text: ''),
       'general_contents': TextEditingController(),
       'status': TextEditingController(),
       'info_systems_served': TextEditingController(),
@@ -341,8 +380,60 @@ class _PartIICState extends State<PartIIC> {
       'users_internal': TextEditingController(),
       'users_external': TextEditingController(),
       'owner': TextEditingController(),
-    });
+    };
+    
+    dbControllers.add(newDatabase);
+    
+    for (final ctl in newDatabase.values) {
+      ctl.addListener(_markUnsaved);
+      if (ctl == newDatabase['name_of_database']) {
+        ctl.addListener(() => setState(() {}));
+      }
+    }
+    
     setState(() {});
+  }
+
+  void _checkDuplicateNumbers() {
+    final numberMap = <String, int>{};
+    final duplicates = <String>[];
+    
+    for (int i = 0; i < dbControllers.length; i++) {
+      final name = dbControllers[i]['name_of_database']!.text;
+      final match = RegExp(r'^DB(\d+)').firstMatch(name);
+      if (match != null) {
+        final number = match.group(1)!;
+        if (numberMap.containsKey(number)) {
+          duplicates.add(number);
+        } else {
+          numberMap[number] = i;
+        }
+      }
+    }
+    
+    _clearResolvedWarnings(duplicates);
+    
+    if (duplicates.isNotEmpty && mounted) {
+      final uniqueDuplicates = duplicates.toSet();
+      final newWarnings = uniqueDuplicates.where((number) => !_shownDuplicateWarnings.contains(number)).toSet();
+      
+      if (newWarnings.isNotEmpty) {
+        _shownDuplicateWarnings.addAll(newWarnings);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Warning: Duplicate numbers detected: ${newWarnings.join(', ')}'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  void _clearResolvedWarnings(List<String> currentDuplicates) {
+    final currentDuplicateSet = currentDuplicates.toSet();
+    _shownDuplicateWarnings.removeWhere((number) => !currentDuplicateSet.contains(number));
   }
 
   void removeDatabase(int index) {
@@ -409,11 +500,33 @@ class _PartIICState extends State<PartIIC> {
                     hintText: 'Enter database name (DB will be added automatically)',
                   ),
                   onChanged: (value) {
-                    if (!value.startsWith('DB ')) {
+                    if (!value.startsWith('DB')) {
                       final cleanValue = value.replaceFirst(RegExp(r'^DB\s*'), '');
-                      controllers['name_of_database']!.text = 'DB. ' + cleanValue;
-                      controllers['name_of_database']!.selection = TextSelection.collapsed(offset: 3);
+                      final newValue = 'DB' + cleanValue;
+                      if (newValue != value) {
+                        controllers['name_of_database']!.text = newValue;
+                        controllers['name_of_database']!.selection = TextSelection.collapsed(offset: 2);
+                      }
+                      return;
                     }
+                    
+                    if (value.startsWith('DB') && value.length > 2) {
+                      final afterDB = value.substring(2);
+                      final numberMatch = RegExp(r'^(\d{2,})').firstMatch(afterDB);
+                      if (numberMatch != null && !value.contains(' - ')) {
+                        final number = numberMatch.group(1)!;
+                        final rest = afterDB.substring(number.length);
+                        final newValue = 'DB$number - $rest';
+                        if (newValue != value) {
+                          final currentCursor = controllers['name_of_database']!.selection.baseOffset;
+                          final cursorOffset = currentCursor + (newValue.length - value.length);
+                          controllers['name_of_database']!.text = newValue;
+                          controllers['name_of_database']!.selection = TextSelection.collapsed(offset: cursorOffset);
+                        }
+                      }
+                    }
+                    
+                    _checkDuplicateNumbers();
                   },
                 ),
               ),
@@ -768,9 +881,9 @@ class _PartIICState extends State<PartIIC> {
                         if (_userRole == 'admin')
                           Column(
                             children: [
-                              for (final entry in dbControllers.asMap().entries)
+                              for (final entry in _sortedDatabases.asMap().entries)
                                 Container(
-                                  key: ValueKey('database_${entry.key}'),
+                                  key: ValueKey('database_${dbControllers.indexOf(entry.value)}'),
                                   margin: const EdgeInsets.only(bottom: 24),
                                   padding: const EdgeInsets.all(20),
                                   decoration: BoxDecoration(
@@ -788,7 +901,7 @@ class _PartIICState extends State<PartIIC> {
                                   ),
                                   child: Column(
                                     children: [
-                                      databaseTableForm(entry.value, entry.key),
+                                      databaseTableForm(entry.value, dbControllers.indexOf(entry.value)),
                                     ],
                                   ),
                                 ),
@@ -797,7 +910,7 @@ class _PartIICState extends State<PartIIC> {
                         else
                           Column(
                             children: [
-                              for (final entry in dbControllers.asMap().entries)
+                              for (final entry in _sortedDatabases.asMap().entries)
                                 Container(
                                   margin: const EdgeInsets.only(bottom: 24),
                                   padding: const EdgeInsets.all(20),
@@ -814,7 +927,7 @@ class _PartIICState extends State<PartIIC> {
                                     ],
                                     border: Border.all(color: Colors.grey.shade200),
                                   ),
-                                  child: databaseTableForm(entry.value, entry.key),
+                                  child: databaseTableForm(entry.value, dbControllers.indexOf(entry.value)),
                                 ),
                             ],
                           ),

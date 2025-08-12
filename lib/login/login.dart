@@ -138,34 +138,7 @@ class _LoginPageState extends State<LoginPage> {
       debugPrint('🔑 Google sign-in for uid=${user.uid}, isNew=$isNew');
 
       if (isNew) {
-        try {
-          await _firestore.collection('users').doc(user.uid).set({
-            'username': user.displayName ?? '',
-            'email': user.email ?? '',
-            'photoURL': user.photoURL ?? '',
-            'role': 'user',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          debugPrint('✅ Firestore write succeeded for Google user ${user.uid}');
-        } catch (e, st) {
-          debugPrint('❌ Firestore write FAILED for Google user: $e\n$st');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error saving user data: $e')),
-            );
-          }
-        }
-      } else {
-        debugPrint('ℹ️ Google user ${user.uid} already existed, skipping Firestore write.');
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signed in with Google!')),
-      );
-      final userDoc = await _firestore.collection('users').doc(user.uid).get();
-      final profileComplete = userDoc.data()?['profileComplete'] == true;
-      if (!profileComplete) {
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -177,7 +150,30 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         );
+        return;
+      }
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      final profileComplete = userDoc.data()?['profileComplete'] == true;
+      
+      if (!mounted) return;
+      
+      if (!profileComplete) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => RegisterPage(
+              isGoogleSignIn: true,
+              initialUsername: userDoc.data()?['username'] ?? user.displayName ?? '',
+              initialPhotoUrl: userDoc.data()?['photoURL'] ?? user.photoURL ?? '',
+              initialEmail: userDoc.data()?['email'] ?? user.email ?? '',
+            ),
+          ),
+        );
       } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Signed in with Google!')),
+        );
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const StartupTimePage()),

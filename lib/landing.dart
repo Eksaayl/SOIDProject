@@ -10,6 +10,7 @@ import 'admin/document_review.dart';
 import 'login/login.dart';
 import 'admin/manage_users.dart';
 import 'startup.dart';
+import 'login/register.dart';
 
 class Landing extends StatefulWidget {
   const Landing({super.key});
@@ -27,8 +28,6 @@ class _LandingState extends State<Landing> {
   String _userRole = '';
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _userDocStream;
   int _selectedIndex = 0;
-  bool _hasProjects = false;
-  bool _isCheckingProjects = true;
 
   @override
   void initState() {
@@ -52,8 +51,6 @@ class _LandingState extends State<Landing> {
         _userRole = role;
         _isAdmin = role == 'admin';
         _isEditor = role == 'editor';
-        _hasProjects = subRoles.isNotEmpty;
-        _isCheckingProjects = false;
       });
     });
   }
@@ -158,36 +155,7 @@ class _LandingState extends State<Landing> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (!_isCheckingProjects && !_hasProjects) {
-      return const StartupPage();
-    }
-
-    if (_isCheckingProjects) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xff021e84)),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'Checking your projects...',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Color(0xFF4A5568),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
+  Widget _buildMainDashboard() {
     final width = MediaQuery.of(context).size.width;
     final isDrawer = width < _breakpoint;
 
@@ -218,7 +186,6 @@ class _LandingState extends State<Landing> {
           builder: (ctx) => IconButton(
             icon: const Icon(Icons.menu, color: Colors.white),
             onPressed: () => Scaffold.of(ctx).openDrawer(),
-
           ),
         ),
       )
@@ -252,6 +219,104 @@ class _LandingState extends State<Landing> {
         ],
       ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final userDoc = FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser!.uid);
+      
+      return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: userDoc.snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              backgroundColor: Colors.white,
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xff021e84)),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Loading your profile...',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF4A5568),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RegisterPage(
+                    isGoogleSignIn: true,
+                    initialUsername: '',
+                    initialPhotoUrl: '',
+                    initialEmail: FirebaseAuth.instance.currentUser?.email ?? '',
+                  ),
+                ),
+              );
+            });
+            return const Scaffold(
+              backgroundColor: Colors.white,
+              body: Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xff021e84)),
+                ),
+              ),
+            );
+          }
+          
+          final userData = snapshot.data!.data()!;
+         
+          final profileComplete = userData['profileComplete'] == true || 
+            (userData['username'] != null && 
+             userData['email'] != null && 
+             userData['service'] != null && 
+             userData['mobile'] != null);
+          final hasProjects = (userData['sub_roles'] as List<dynamic>?)?.isNotEmpty ?? false;
+          
+          if (!profileComplete) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RegisterPage(
+                    isGoogleSignIn: true,
+                    initialUsername: userData['username'] ?? '',
+                    initialPhotoUrl: userData['photoURL'] ?? '',
+                    initialEmail: userData['email'] ?? '',
+                  ),
+                ),
+              );
+            });
+            return const Scaffold(
+              backgroundColor: Colors.white,
+              body: Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xff021e84)),
+                ),
+              ),
+            );
+          }
+          
+          if (!hasProjects) {
+            return const StartupPage();
+          }
+          return _buildMainDashboard();
+        },
+      );
   }
 }
 
